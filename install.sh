@@ -42,7 +42,8 @@ uninstall() {
     rm -rf "$DEST" && ok "removed $DEST"
     rm -f "$LAUNCHER_INC" && ok "removed $LAUNCHER_INC"
     if [ -f "$HYPR_CONF" ] && grep -q "$NAME.conf" "$HYPR_CONF"; then
-        sed -i "\#$NAME.conf#d" "$HYPR_CONF" && ok "unlinked from hyprland.conf"
+        cp -p "$HYPR_CONF" "$HYPR_CONF.bak-$(date +%Y%m%d%H%M%S)"
+        sed -i "\#$NAME (managed)#d; \#$NAME.conf#d" "$HYPR_CONF" && ok "unlinked from hyprland.conf (backup saved)"
     fi
     warn "kept $BINDS and your saved apps/settings — delete them by hand if you want them gone."
     ok "Done."
@@ -90,9 +91,13 @@ exec-once = $QS_NAME -c $NAME
 source = $BINDS
 EOF
     if [ -f "$HYPR_CONF" ] && ! grep -q "$NAME.conf" "$HYPR_CONF"; then
-        printf '\nsource = %s\n' "$LAUNCHER_INC" >> "$HYPR_CONF"
-        ok "Linked into hyprland.conf."
-    elif [ ! -f "$HYPR_CONF" ]; then
+        cp -p "$HYPR_CONF" "$HYPR_CONF.bak-$(date +%Y%m%d%H%M%S)"   # back up before the one edit we make
+        [ -n "$(tail -c1 "$HYPR_CONF")" ] && printf '\n' >> "$HYPR_CONF"   # ensure a trailing newline first
+        printf '# %s (managed) — remove with: install.sh --uninstall\nsource = %s\n' "$NAME" "$LAUNCHER_INC" >> "$HYPR_CONF"
+        ok "Linked into hyprland.conf (backup saved next to it)."
+    elif [ -f "$HYPR_CONF" ]; then
+        ok "Already linked in hyprland.conf."
+    else
         warn "No hyprland.conf found — add:  source = $LAUNCHER_INC"
     fi
 else
