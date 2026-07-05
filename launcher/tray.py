@@ -53,7 +53,7 @@ def build_menu():
 def main():
     ind = AppIndicator3.Indicator.new_with_path(
         "quickshell-launcher",
-        "launcher-ring",  # resolves to launcher-ring.svg in HERE
+        "CuteRing",  # resolves to CuteRing.png in HERE
         AppIndicator3.IndicatorCategory.APPLICATION_STATUS,
         HERE,
     )

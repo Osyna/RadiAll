@@ -369,22 +369,21 @@ Item {
         }
     }
 
-    // settings button (appears after 2s hovering the hole)
-    Rectangle {
+    // settings button (appears after 2s hovering the hole) — the CuteRing logo
+    Item {
         anchors.centerIn: parent
-        width: Theme.s(50) * wheel.uiScale; height: width; radius: width / 2
-        color: Qt.rgba(30/255, 34/255, 44/255, 0.96)
-        border.width: 1; border.color: Qt.rgba(1, 1, 1, 0.16)
+        width: Theme.s(54) * wheel.uiScale; height: width
         visible: wheel.showSettingsBtn || opacity > 0.01
         opacity: wheel.showSettingsBtn ? 1 : 0
         scale: wheel.showSettingsBtn ? 1 : 0.6
         Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
         Behavior on scale   { NumberAnimation { duration: 180; easing.type: Easing.OutBack } }
-        Text {
+        Image {
             anchors.centerIn: parent
-            text: ""   // nf-fa-cog
-            font.family: Theme.iconFont; font.pixelSize: Theme.s(22) * wheel.uiScale
-            color: "white"; renderType: Text.NativeRendering
+            width: parent.width; height: width
+            sourceSize.width: width; sourceSize.height: width
+            source: "CuteRing.png"
+            smooth: true
         }
     }
 }

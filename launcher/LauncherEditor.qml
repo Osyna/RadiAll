@@ -180,6 +180,11 @@ Rectangle {
         RowLayout {
             Layout.fillWidth: true
             spacing: Theme.s(10)
+            Image {
+                Layout.preferredWidth: Theme.s(26); Layout.preferredHeight: Theme.s(26)
+                sourceSize.width: Theme.s(26); sourceSize.height: Theme.s(26)
+                source: "CuteRing.png"; smooth: true
+            }
             Text {
                 text: "Launcher"; color: Theme.fgStrong
                 font.family: Theme.fontDisplay; font.pixelSize: Theme.s(18); font.weight: Font.DemiBold
