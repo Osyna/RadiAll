@@ -56,19 +56,6 @@ about to jump to.
 <tr>
 <td width="50%" valign="middle">
 
-### Focus actions
-
-The window you're in, with its actions arced around its icon: close, float,
-fullscreen, whatever the app declares in its `.desktop` file, plus custom
-shortcuts you add yourself.
-
-</td>
-<td width="50%"><img src="asset/demo/actions_ring.gif" width="100%" alt="Focus-actions ring"></td>
-</tr>
-
-<tr>
-<td width="50%" valign="middle">
-
 ### Actions, in motion
 
 Long-press an app in the Apps ring and its action arc opens right where it sits.
@@ -106,7 +93,7 @@ hand-edit.
 <tr>
 <td width="50%" valign="middle">
 
-### Theme it while you watch
+### Theme it
 
 Colours, ring and icon size, dim, opacity, follow-cursor, keybinds. Change a
 value and the ring updates as you look at it. Themes are plain JSON, so they
