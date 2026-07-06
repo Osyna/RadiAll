@@ -4,9 +4,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Radial Launcher — a cute pie-wheel launcher for Hyprland</title>
+    <title>RadiAll — a cute pie-wheel launcher for Hyprland</title>
     <meta name="description"
-        content="A radial app launcher, window switcher, and window-action menu for Hyprland, built on Quickshell. Three rings, a real tray icon, one-command install.">
+        content="A pie-wheel launcher, window switcher, and per-window action menu for Hyprland, built on Quickshell. Live window previews, send-a-shortcut buttons, drop-in JSON themes, real app icons, and one-line keybinds.">
     <link rel="icon" type="image/png" href="assets/favicon.png">
     <link rel="stylesheet" href="styles/style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -54,24 +54,48 @@
             <g id="i-download" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
             </g>
+            <g id="i-key" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="6" width="20" height="12" rx="2" /><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h12" />
+            </g>
+            <g id="i-eye" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" />
+            </g>
+            <g id="i-drop" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 3s6.5 6.8 6.5 11a6.5 6.5 0 0 1-13 0C5.5 9.8 12 3 12 3Z" />
+            </g>
+            <g id="i-image" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="4" width="18" height="16" rx="2.5" /><circle cx="8.5" cy="9.5" r="1.6" /><path d="m4 17 5-5 4 4 3-3 4 4" />
+            </g>
+            <g id="i-term" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2.5" y="4" width="19" height="16" rx="2.5" /><path d="m6 9 3 3-3 3M12.5 15h4" />
+            </g>
+            <!-- ===== app icons: real logos from Iconify's simple-icons set, brand-tinted ===== -->
+            <g id="a-firefox" color="#ff6a1a"><path fill="currentColor" d="M8.824 7.287c.008 0 .004 0 0 0m-2.8-1.4c.006 0 .003 0 0 0m16.754 2.161c-.505-1.215-1.53-2.528-2.333-2.943c.654 1.283 1.033 2.57 1.177 3.53l.002.02c-1.314-3.278-3.544-4.6-5.366-7.477c-.091-.147-.184-.292-.273-.446a4 4 0 0 1-.13-.24a2 2 0 0 1-.172-.46a.03.03 0 0 0-.027-.03a.04.04 0 0 0-.021 0l-.006.001l-.01.005l.005-.008c-2.585 1.515-3.657 4.168-3.932 5.856a6.2 6.2 0 0 0-2.305.587a.297.297 0 0 0-.147.37c.057.162.24.24.396.17a5.6 5.6 0 0 1 2.008-.523l.067-.005a5.9 5.9 0 0 1 1.957.222l.095.03a6 6 0 0 1 .616.228q.12.054.238.112l.107.055a6 6 0 0 1 .368.211a5.95 5.95 0 0 1 2.034 2.104c-.62-.437-1.733-.868-2.803-.681c4.183 2.09 3.06 9.292-2.737 9.02a5.2 5.2 0 0 1-1.513-.292a4 4 0 0 1-.538-.232c-1.42-.735-2.593-2.121-2.74-3.806c0 0 .537-2 3.845-2c.357 0 1.38-.998 1.398-1.287c-.005-.095-2.029-.9-2.817-1.677c-.422-.416-.622-.616-.8-.767a4 4 0 0 0-.301-.227a5.4 5.4 0 0 1-.032-2.842c-1.195.544-2.124 1.403-2.8 2.163h-.006c-.46-.584-.428-2.51-.402-2.913c-.006-.025-.343.176-.389.206a8.4 8.4 0 0 0-1.136.974q-.596.606-1.085 1.303a9.8 9.8 0 0 0-1.562 3.52c-.003.013-.11.487-.19 1.073q-.02.135-.037.272a8 8 0 0 0-.069.667l-.002.034l-.023.387l-.001.06C.386 18.795 5.593 24 12.016 24c5.752 0 10.527-4.176 11.463-9.661q.028-.223.052-.448c.232-1.994-.025-4.09-.753-5.844z"/></g>
+            <g id="a-krita" color="#2f86d8"><path fill="currentColor" d="M.652.76a.63.63 0 0 0-.5.246c-.352.448-.035.898.362 1.262c.206.189 1.77 1.794 3.428 3.527a11 11 0 0 1 1.815-1.983C3.667 2.515 1.694 1.266 1.461 1.1C1.201.914.917.762.652.76m5.105 3.052c1.848 1.148 3.786 2.332 4.693 2.84c1.469.821 3.758 2.684 4.092 4.434c.535.466 2.182 1.916 2.596 2.413c.698-.211 1.518.133 2.06 1.12c.866 1.583.227 3.747-1.968 4.988a5 5 0 0 1-.296.267l.296-.267c1.14-1.468-.714-2.44-1.175-3.864a2.1 2.1 0 0 1-.11-.78c-.533-.282-2.11-1.452-2.795-1.965c-1.801.16-4.207-1.773-5.35-3.08c-.7-.802-2.32-2.517-3.858-4.123a11.05 11.05 0 0 0-2.046 6.393A11.052 11.052 0 1 0 12.948 1.136c-2.64.004-5.19.954-7.19 2.676zm8.71 7.552c-.515.126-.968.831-1.118 1.306c-.038.115-.04.303.066.342c.802.592 1.556 1.168 2.4 1.7c.162-.393.746-.963 1.096-1.2zm-11.53 1.639c.812 1.898 5.798 7.17 12.06 2.695a2.1 2.1 0 0 0 .114.715c.46 1.42 2.36 2.427 1.238 3.89c-2.135 1.364-5 1.201-6.989.528c-3.558-1.204-5.914-4.332-6.424-7.828zm13.782.7l-.065.049q-.006.006-.011.008q.005-.006.01-.008c.024-.015.044-.034.066-.048z"/></g>
+            <g id="a-blender" color="#ea7600"><path fill="currentColor" d="M12.51 13.214c.046-.8.438-1.506 1.03-2.006a3.42 3.42 0 0 1 2.212-.79c.85 0 1.631.3 2.211.79c.592.5.983 1.206 1.028 2.005c.045.823-.285 1.586-.865 2.153a3.4 3.4 0 0 1-2.374.938a3.4 3.4 0 0 1-2.376-.938c-.58-.567-.91-1.33-.865-2.152M7.35 14.831c.006.314.106.922.256 1.398a7.4 7.4 0 0 0 1.593 2.757a8.2 8.2 0 0 0 2.787 2.001a8.95 8.95 0 0 0 3.66.76a9 9 0 0 0 3.657-.772a8.3 8.3 0 0 0 2.785-2.01a7.4 7.4 0 0 0 1.592-2.762a7 7 0 0 0 .25-3.074a7.1 7.1 0 0 0-1.016-2.779a7.8 7.8 0 0 0-1.852-2.043h.002L13.566 2.55l-.02-.015c-.492-.378-1.319-.376-1.86.002c-.547.382-.609 1.015-.123 1.415l-.001.001l3.126 2.543l-9.53.01h-.013c-.788.001-1.545.518-1.695 1.172c-.154.665.38 1.217 1.2 1.22V8.9l4.83-.01l-8.62 6.617l-.034.025c-.813.622-1.075 1.658-.563 2.313c.52.667 1.625.668 2.447.004L7.414 14s-.069.52-.063.831zm12.09 1.741c-.97.988-2.326 1.548-3.795 1.55c-1.47.004-2.827-.552-3.797-1.538a4.5 4.5 0 0 1-1.036-1.622a4.28 4.28 0 0 1 .282-3.519a4.7 4.7 0 0 1 1.153-1.371c.942-.768 2.141-1.183 3.396-1.185c1.256-.002 2.455.41 3.398 1.175c.48.391.87.854 1.152 1.367a4.3 4.3 0 0 1 .522 1.706a4.2 4.2 0 0 1-.239 1.811a4.5 4.5 0 0 1-1.035 1.626"/></g>
+            <g id="a-gimp" color="#6b5744"><path fill="currentColor" d="M15.496 8.608a2.175 2.385 0 0 0-2.175 2.384a2.175 2.385 0 0 0 2.175 2.385a2.175 2.385 0 0 0 2.175-2.385a2.175 2.385 0 0 0-2.175-2.384m0 .15a.934.934 0 0 1 .933.935a.934.934 0 0 1-.933.934a.934.934 0 0 1-.934-.934a.934.934 0 0 1 .934-.934zm4.903 9.433a.3.3 0 0 0-.094.014c-.278.08-.642.735-.563 1.013s.356.152.524.245c.149.083.196.33.4.329c-.033.446.125.903.398 1.231c.464.564 1.173.576 1.627.68c.453.103.789.38.955.683h-.01c.14.253.413-.965.313-1.81c-.199-1.692-1.827-2.294-2.657-1.856c-.095-.218-.349-.112-.507-.2c-.147-.082-.195-.323-.39-.329zM2.01 8.207a2.938 2.279 78.561 0 0-.296.036a2.938 2.279 78.561 0 0-1.637 3.343a2.938 2.279 78.561 0 0 2.824 2.412a2.938 2.279 78.561 0 0 1.637-3.343A2.938 2.279 78.561 0 0 2.01 8.207m.02.182a1.24 1.24 89.982 0 1 1.24 1.24a1.24 1.24 89.982 0 1-1.24 1.241A1.24 1.24 89.982 0 1 .79 9.63a1.24 1.24 89.982 0 1 1.24-1.24zm7.296.619a1.61 1.957 0 0 0-1.61 1.957a1.61 1.957 0 0 0 1.61 1.957a1.61 1.957 0 0 0 1.61-1.957a1.61 1.957 0 0 0-1.61-1.957m.01.142a.734.734 0 0 1 .733.733a.734.734 0 0 1-.733.734a.734.734 0 0 1-.734-.734a.734.734 0 0 1 .734-.733m13.785-7.57c-.082.01-.178.056-.278.184c-2.255 3.385-5.54 4.902-7.936 5.521a3.513 3.586 0 0 1 3.25 3.576a3.513 3.586 0 0 1-3.513 3.586a3.513 3.586 0 0 1-3.375-2.595a2.676 2.998 0 0 1-2.52 2a2.676 2.998 0 0 1-2.676-2.998a2.676 2.998 0 0 1 2.675-2.999a2.676 2.998 0 0 1 2.517 2.037a3.513 3.586 0 0 1 1.878-2.27c-1.887.246-2.89-.025-4.335-.649c-1.024-.56-1.722-1.173-2.48-2.359c-.036-.055-.11-.086-.16-.025c-.18.241-.97 5.723-.98 6.227c-.033 1.632-.706 3.593-2.73 3.661c1.864 3.799 5.919 5.465 10.586 5.397c1.404.01 3.329-.332 5.171-1.243a214 214 0 0 1-1.568-.996c-1.347.788-2.935 1.09-4.674 1.019c-2.217-.09-1.847-.732-1.36-.667c3.574.506 5.82-.624 7.315-2.547a35 35 0 0 1-.556-.377c-.164-.114.032-.291.385-.304h.04c.205-.002.458.056.722.206c.757.433.783.965.535 1.081c-.08.037-.263-.048-.439-.151c-.255.329-.53.622-.818.887h.01c.668.29 1.568.684 2.005.89a9.6 9.6 0 0 0 3.017-3.574c2.18-4.449.652-12.176.614-12.29c-.039-.112-.15-.211-.242-.226h-.076z"/></g>
+            <g id="a-inkscape" color="#2b2b3a"><path fill="currentColor" d="M7.666 14.871c.237.147 3.818.875 4.693 1.02c.303.064.088.376-.33.587c-.943.251-5.517-1.607-4.363-1.607m5.647-13.264l3.505 3.56c.333.34.328.998.142 1.187l-1.74-1.392l-.342 2.061l-1.455-.767l-2.328 1.47l-.771-3.1L9.073 6.79H7.16c-.78 0-.871-.99-.163-1.698c1.237-1.335 2.657-2.696 3.429-3.485c.776-.793 2.127-.77 2.887 0M9.786.97l-8.86 9.066c-2.993 3.707 2.038 3.276 4.194 4.343c.774.791-2.965 1.375-2.191 2.166c.773.791 4.678 1.524 5.453 2.314c.773.791-1.584 1.63-.81 2.42c.773.792 2.563.042 2.898 1.868c.238 1.304 3.224.56 4.684-.508c.774-.791-1.48-.717-.706-1.508c1.923-1.967 3.715-.714 4.373-2.686c.325-.974-2.832-1.501-2.057-2.292c2.226-1.3 9.919-2.146 6.268-5.796L13.85.97c-1.123-1.078-2.998-1.09-4.063 0zm10.177 17.475c0 .45 3.314.745 3.314-.106c-.472-1.366-2.922-1.274-3.314.106m-14.928 2.39c.784.679 1.997-.169 2.36-1.116c-.76-1.01-3.607.037-2.36 1.116m14.512-1.466c-1.011.908.114 1.828 1.111 1.242c.222-.225-.006-1.016-1.11-1.242Z"/></g>
+            <g id="a-vlc" color="#ff8300"><path fill="currentColor" d="M12.032 0c-.882 0-1.055.136-1.055.136c-.173.056-.355.255-.41.43l-.884 2.815c.473.173 1.322.426 2.234.426a6.2 6.2 0 0 0 2.376-.507L13.435.566a.78.78 0 0 0-.407-.437S12.914 0 12.032 0m3.564 7.455c-.36.34-1.327.937-3.68.937c-2.292 0-3.188-.567-3.52-.911l-1.39 4.423c.228.361 1.255 1.56 4.885 1.56c3.757 0 4.854-1.348 5.065-1.675zm-8.59 4.449l-1.002 3.192H4.343a.65.65 0 0 0-.583.431L1.426 23.16a.4.4 0 0 0-.017.154l-.002.016c0 .084.024.226.024.226a.53.53 0 0 0 .51.445H22.06a.53.53 0 0 0 .51-.445s.023-.142.023-.226l-.003-.01l.003-.032a.4.4 0 0 0-.02-.128l-2.333-7.632a.65.65 0 0 0-.583-.431h-1.663l.2.64c-.24.484-1.488 2.38-6.303 2.38c-4.6 0-5.828-1.73-6.11-2.308z"/></g>
+            <g id="a-obs" color="#2c313c"><path fill="currentColor" d="M12 24C5.383 24 0 18.617 0 12S5.383 0 12 0s12 5.383 12 12s-5.383 12-12 12m0-22.891C5.995 1.109 1.11 5.995 1.11 12S5.995 22.89 12 22.89S22.89 18.005 22.89 12S18.005 1.109 12 1.109M6.182 5.99c.352-1.698 1.503-3.229 3.05-3.996c-.269.273-.595.483-.844.78c-1.02 1.1-1.48 2.692-1.199 4.156c.355 2.235 2.455 4.06 4.732 4.028c1.765.079 3.485-.937 4.348-2.468c1.848.063 3.645 1.017 4.7 2.548c.54.799.962 1.736.991 2.711c-.342-1.295-1.202-2.446-2.375-3.095a4.9 4.9 0 0 0-3.772-.425c-1.56.448-2.849 1.723-3.293 3.293c-.377 1.25-.216 2.628.377 3.772c-.825 1.429-2.315 2.449-3.932 2.756c-1.244.261-2.551.059-3.709-.464c1.036.302 2.161.355 3.191-.011a4.91 4.91 0 0 0 3.024-2.935c.556-1.49.345-3.261-.591-4.54c-.7-1.007-1.803-1.717-3.002-1.969c-.38-.068-.764-.098-1.148-.134c-.611-1.231-.834-2.66-.528-3.996z"/></g>
+            <g id="a-terminal" color="#3f4657"><path fill="currentColor" d="M1.846 0A1.84 1.84 0 0 0 0 1.846v18.463c0 1.022.823 1.845 1.846 1.845h20.308A1.84 1.84 0 0 0 24 20.31V1.846A1.84 1.84 0 0 0 22.154 0zm0 .924h20.308c.512 0 .922.41.922.922v18.463c0 .511-.41.921-.922.921H1.846a.92.92 0 0 1-.922-.921V1.846c0-.512.41-.922.922-.922m0 .922v18.463h20.308V1.846zm1.845 2.14l3.235 1.758v.836L3.69 8.477V7.385l2.243-1.207v-.033L3.69 5.076zM7.846 9.23h3.693v.924H7.846zM0 21.736v.418C0 23.177.823 24 1.846 24h20.308A1.84 1.84 0 0 0 24 22.154v-.418a2.33 2.33 0 0 1-1.846.918H1.846A2.33 2.33 0 0 1 0 21.736"/></g>
         </defs>
     </svg>
 
     <main class="card" id="card">
         <!-- ---------- nav ---------- -->
         <nav class="nav">
-            <button class="brand" id="brand" aria-label="Radial Launcher home">
-                <img class="brand-logo" src="assets/logo.png" alt="Radial Launcher logo" width="40" height="40">
-                <span class="brand-name">Radial<span class="brand-name-b">Launcher</span></span>
+            <button class="brand" id="brand" aria-label="RadiAll home">
+                <img class="brand-logo" src="assets/logo.png" alt="RadiAll logo" width="40" height="40">
+                <span class="brand-name">Radi<span class="brand-name-b">All</span></span>
             </button>
             <div class="nav-links">
                 <button class="nav-link" id="nav-features">Features</button>
-                <a class="nav-link" href="https://github.com/Osyna/radial-launcher" target="_blank" rel="noopener">
-                    GitHub <svg class="ic ic-xs"><use href="#i-ext" /></svg>
+                <a class="nav-link" href="https://github.com/Osyna/RadiAll" target="_blank" rel="noopener">
+                    GitHub <svg viewBox="0 0 24 24" class="ic ic-xs"><use href="#i-ext" /></svg>
                 </a>
             </div>
-            <a class="btn btn-primary btn-sm" href="https://github.com/Osyna/radial-launcher" target="_blank" rel="noopener">
-                <svg class="ic"><use href="#i-download" /></svg><span class="btn-label">Get it</span>
+            <a class="btn btn-primary btn-sm" href="https://github.com/Osyna/RadiAll" target="_blank" rel="noopener">
+                <svg viewBox="0 0 24 24" class="ic"><use href="#i-download" /></svg><span class="btn-label">Get it</span>
             </a>
         </nav>
 
@@ -86,25 +110,26 @@
                             <div class="eyebrow"><span class="pix-dot"></span>Quickshell&nbsp;+&nbsp;Hyprland</div>
                             <h1 class="title">A radial launcher<br>that's actually <span class="hl">cute</span>.</h1>
                             <p class="lede">
-                                Three rings on your fingertips — your <b>apps</b>, every <b>open window</b>, and the
-                                <b>focused window's actions</b> — spun up on a Quickshell wheel. With a real tray icon
-                                and a one-command install.
+                                Tap a key and your <b>apps</b> fan out around the cursor. Tap another for every
+                                <b>open window</b>, each with a live preview. A third rings the window you're in with
+                                everything you can <b>do to it</b>. One wheel, three jobs, and it leaves the rest of your
+                                setup alone.
                             </p>
 
                             <div class="install">
                                 <span class="install-prompt">$</span>
-                                <code id="cmd">git clone https://github.com/Osyna/radial-launcher &amp;&amp; cd radial-launcher &amp;&amp; ./install.sh</code>
+                                <code id="cmd">git clone https://github.com/Osyna/RadiAll &amp;&amp; cd RadiAll &amp;&amp; ./install.sh</code>
                                 <button class="copy" id="copy" aria-label="Copy install command">
-                                    <svg class="ic"><use href="#i-copy" /></svg>
+                                    <svg viewBox="0 0 24 24" class="ic"><use href="#i-copy" /></svg>
                                 </button>
                             </div>
 
                             <div class="cta">
-                                <a class="btn btn-primary" href="https://github.com/Osyna/radial-launcher" target="_blank" rel="noopener">
-                                    <svg class="ic"><use href="#i-github" /></svg> Get it on GitHub
+                                <a class="btn btn-primary" href="https://github.com/Osyna/RadiAll" target="_blank" rel="noopener">
+                                    <svg viewBox="0 0 24 24" class="ic"><use href="#i-github" /></svg> Get it on GitHub
                                 </a>
                                 <button class="btn btn-ghost" id="see-features">
-                                    <svg class="ic"><use href="#i-grid" /></svg> See the rings
+                                    <svg viewBox="0 0 24 24" class="ic"><use href="#i-grid" /></svg> See the rings
                                 </button>
                             </div>
 
@@ -120,16 +145,21 @@
                             <div class="wheel" id="wheel" style="--a:0deg">
                                 <div class="band"></div>
                                 <div class="sector"></div>
+                                <div class="rim"></div>
                                 <div class="tiles">
-                                    <button class="tile" style="--i:0" data-name="Firefox">🦊</button>
-                                    <button class="tile" style="--i:1" data-name="VS Code">💻</button>
-                                    <button class="tile" style="--i:2" data-name="Files">📁</button>
-                                    <button class="tile" style="--i:3" data-name="mpv">🎬</button>
-                                    <button class="tile" style="--i:4" data-name="GIMP">🎨</button>
-                                    <button class="tile" style="--i:5" data-name="Terminal">🖥️</button>
+                                    <button class="tile" style="--i:0" data-name="Firefox"><svg class="app-ic" viewBox="0 0 24 24"><use href="#a-firefox" /></svg></button>
+                                    <button class="tile" style="--i:1" data-name="Krita"><svg class="app-ic" viewBox="0 0 24 24"><use href="#a-krita" /></svg></button>
+                                    <button class="tile" style="--i:2" data-name="Blender"><svg class="app-ic" viewBox="0 0 24 24"><use href="#a-blender" /></svg></button>
+                                    <button class="tile" style="--i:3" data-name="GIMP"><svg class="app-ic" viewBox="0 0 24 24"><use href="#a-gimp" /></svg></button>
+                                    <button class="tile" style="--i:4" data-name="Inkscape"><svg class="app-ic" viewBox="0 0 24 24"><use href="#a-inkscape" /></svg></button>
+                                    <button class="tile" style="--i:5" data-name="VLC"><svg class="app-ic" viewBox="0 0 24 24"><use href="#a-vlc" /></svg></button>
+                                    <button class="tile" style="--i:6" data-name="OBS Studio"><svg class="app-ic" viewBox="0 0 24 24"><use href="#a-obs" /></svg></button>
+                                    <button class="tile" style="--i:7" data-name="Terminal"><svg class="app-ic" viewBox="0 0 24 24"><use href="#a-terminal" /></svg></button>
                                 </div>
                                 <div class="hub">
-                                    <img src="assets/logo.png" alt="" width="72" height="72">
+                                    <div class="hub-screen">
+                                        <span class="hub-line"></span><span class="hub-line short"></span><span class="hub-line"></span>
+                                    </div>
                                     <span class="hub-pill" id="hub-pill">Firefox</span>
                                 </div>
                             </div>
@@ -143,40 +173,64 @@
                     <div class="features">
                         <div class="feat-head">
                             <div class="kicker">FEATURES</div>
-                            <h2 class="feat-title">Everything on the wheel</h2>
-                            <p class="feat-sub">One overlay, three modes, and it never touches the rest of your setup.</p>
+                            <h2 class="feat-title">What the wheel actually does</h2>
+                            <p class="feat-sub">Nine things, and none of them ask you to remember a config-file syntax.</p>
                         </div>
                         <div class="feat-grid">
                             <article class="feat">
-                                <div class="feat-ic"><svg class="ic ic-lg"><use href="#i-grid" /></svg></div>
-                                <h3>Three rings, three keys</h3>
-                                <p><b>Super&nbsp;+&nbsp;A</b> your apps, <b>Super&nbsp;+&nbsp;W</b> open windows,
-                                    <b>Super&nbsp;+&nbsp;D</b> the focused window's actions. Each ring on its own shortcut.</p>
+                                <div class="feat-ic"><svg viewBox="0 0 24 24" class="ic ic-lg"><use href="#i-grid" /></svg></div>
+                                <h3>Launch or jump</h3>
+                                <p><b>Super&nbsp;+&nbsp;A</b> fans your pinned apps out under the cursor. Click one to launch it,
+                                    or land on it directly if it's already open.</p>
                             </article>
                             <article class="feat">
-                                <div class="feat-ic"><svg class="ic ic-lg"><use href="#i-tray" /></svg></div>
-                                <h3>A real tray icon</h3>
-                                <p>A proper StatusNotifierItem in your bar — open any ring or the settings straight from the tray.</p>
+                                <div class="feat-ic"><svg viewBox="0 0 24 24" class="ic ic-lg"><use href="#i-window" /></svg></div>
+                                <h3>Switch windows</h3>
+                                <p><b>Super&nbsp;+&nbsp;W</b> shows every open window, grouped by app. If one app has three
+                                    windows, scroll it and flip between them.</p>
                             </article>
                             <article class="feat">
-                                <div class="feat-ic"><svg class="ic ic-lg"><use href="#i-window" /></svg></div>
-                                <h3>Window switcher</h3>
-                                <p>Every open window, grouped by app, with live thumbnails as you scroll a multi-window app.</p>
+                                <div class="feat-ic"><svg viewBox="0 0 24 24" class="ic ic-lg"><use href="#i-eye" /></svg></div>
+                                <h3>See it before you land</h3>
+                                <p>The middle of the ring shows a live thumbnail of the window you're pointing at. Scroll a busy
+                                    app and each window previews in turn.</p>
                             </article>
                             <article class="feat">
-                                <div class="feat-ic"><svg class="ic ic-lg"><use href="#i-spark" /></svg></div>
-                                <h3>Focus actions</h3>
-                                <p>Close, float, fullscreen, <code>.desktop</code> actions and your own custom shortcuts — arranged around the app's icon.</p>
+                                <div class="feat-ic"><svg viewBox="0 0 24 24" class="ic ic-lg"><use href="#i-spark" /></svg></div>
+                                <h3>Act on the focused window</h3>
+                                <p><b>Super&nbsp;+&nbsp;D</b> wraps the current window in close, float and fullscreen, plus the
+                                    app's own <code>.desktop</code> actions like New Window.</p>
                             </article>
                             <article class="feat">
-                                <div class="feat-ic"><svg class="ic ic-lg"><use href="#i-cursor" /></svg></div>
-                                <h3>Follow the cursor</h3>
-                                <p>Flick the mouse and the accent sector tracks it anywhere on screen — no need to land on the ring.</p>
+                                <div class="feat-ic"><svg viewBox="0 0 24 24" class="ic ic-lg"><use href="#i-key" /></svg></div>
+                                <h3>Fire your own shortcut</h3>
+                                <p>Add a wedge that sends a keystroke into the live window — a New&nbsp;Tab button that presses
+                                    <code>Ctrl+T</code> on whatever's focused. You set the keys once.</p>
                             </article>
                             <article class="feat">
-                                <div class="feat-ic"><svg class="ic ic-lg"><use href="#i-sliders" /></svg></div>
-                                <h3>Tune it in-app</h3>
-                                <p>Colours, sizes, shortcuts and behaviour — all in a built-in settings panel. No config files to edit.</p>
+                                <div class="feat-ic"><svg viewBox="0 0 24 24" class="ic ic-lg"><use href="#i-image" /></svg></div>
+                                <h3>Real app icons</h3>
+                                <p>It reads each app's actual icon from your desktop theme — nothing to set up. For custom
+                                    actions, search a library of thousands, or point at any image file.</p>
+                            </article>
+                            <article class="feat">
+                                <div class="feat-ic"><svg viewBox="0 0 24 24" class="ic ic-lg"><use href="#i-drop" /></svg></div>
+                                <h3>Themes in one file</h3>
+                                <p>Switch from a dropdown, or drop a <code>.json</code> in the themes folder and it turns up there.
+                                    Accent and background get a real colour picker. Ships with RadiAll, Paper, Light, Catppuccin
+                                    and Nord.</p>
+                            </article>
+                            <article class="feat">
+                                <div class="feat-ic"><svg viewBox="0 0 24 24" class="ic ic-lg"><use href="#i-term" /></svg></div>
+                                <h3>One command to bind</h3>
+                                <p>A <code>radiall</code> command opens any ring, so a Hyprland bind is one line:
+                                    <code>radiall --apps</code>. Run <code>radiall --binds</code> to print them all.</p>
+                            </article>
+                            <article class="feat">
+                                <div class="feat-ic"><svg viewBox="0 0 24 24" class="ic ic-lg"><use href="#i-sliders" /></svg></div>
+                                <h3>Tuned from a panel</h3>
+                                <p>Icon size, ring size, backdrop dim, wheel opacity, the shortcuts — all live in a settings panel.
+                                    Hand-editing is there if you want it, not required.</p>
                             </article>
                         </div>
                     </div>
@@ -194,7 +248,7 @@
         <footer class="foot">
             <span>Built on <a href="https://quickshell.org" target="_blank" rel="noopener">Quickshell</a> for Hyprland.</span>
             <span class="foot-sep">·</span>
-            <a href="https://github.com/Osyna/radial-launcher" target="_blank" rel="noopener">Source &amp; install</a>
+            <a href="https://github.com/Osyna/RadiAll" target="_blank" rel="noopener">Source &amp; install</a>
             <span class="foot-sep">·</span>
             <span>MIT</span>
         </footer>

@@ -2,11 +2,12 @@
 """System-tray icon for the Quickshell radial launcher.
 
 Publishes a real StatusNotifierItem (via libappindicator) whose menu opens each
-ring and the settings. Every entry just fires the launcher's Hyprland global
-shortcut with `hyprctl dispatch global launcher:<target>`, the same targets the
-keybinds use — so there's no extra IPC surface to keep in sync.
+ring and the settings by calling the launcher over Quickshell IPC
+(`qs -p …/radiall/shell.qml ipc call launcher <target>`) — compositor-agnostic, so
+the tray behaves the same on Hyprland and any other Wayland compositor.
 """
 import os
+import shutil
 import subprocess
 
 import gi
@@ -16,8 +17,10 @@ gi.require_version("AppIndicator3", "0.1")
 from gi.repository import AppIndicator3, Gtk  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+QS = shutil.which("qs") or shutil.which("quickshell") or "qs"
+SHELL_QML = os.path.join(os.path.dirname(HERE), "shell.qml")  # launched by path (see radiall)
 
-# (menu label, launcher global target). See shell.qml GlobalShortcut names.
+# (menu label, launcher IPC function). See the IpcHandler "launcher" in shell.qml.
 ENTRIES = [
     ("Apps ring", "apps"),
     ("Windows ring", "windows"),
@@ -29,7 +32,7 @@ ENTRIES = [
 
 def dispatch(target):
     return lambda _item: subprocess.Popen(
-        ["hyprctl", "dispatch", "global", f"launcher:{target}"]
+        [QS, "-p", SHELL_QML, "ipc", "call", "launcher", target]
     )
 
 
@@ -53,12 +56,12 @@ def build_menu():
 def main():
     ind = AppIndicator3.Indicator.new_with_path(
         "quickshell-launcher",
-        "CuteRing",  # resolves to CuteRing.png in HERE
+        "RadiAll",  # resolves to RadiAll.png in HERE
         AppIndicator3.IndicatorCategory.APPLICATION_STATUS,
         HERE,
     )
     ind.set_status(AppIndicator3.IndicatorStatus.ACTIVE)
-    ind.set_title("Radial Launcher")
+    ind.set_title("RadiAll")
     menu = build_menu()
     ind.set_menu(menu)
     # middle-click opens the apps ring

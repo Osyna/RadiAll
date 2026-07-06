@@ -1,8 +1,8 @@
 import Quickshell
-import Quickshell.Hyprland
 import Quickshell.Wayland
 import QtQuick
 import QtQuick.Shapes
+import QtQuick.Effects
 import "../services"
 
 // The radial wheel: band with a transparent hole, app icons on the ring, an accent
@@ -18,10 +18,10 @@ Item {
     readonly property var st: Launcher.settings
     readonly property var ring: Launcher.ringModel
     readonly property int count: ring.length
-    readonly property real ringR:  Theme.s(st.ringRadius) * uiScale
-    readonly property real iconBox: Theme.s(st.iconSize) * uiScale
+    readonly property real ringR:  Skin.s(st.ringRadius) * uiScale
+    readonly property real iconBox: Skin.s(st.iconSize) * uiScale
     readonly property real outerR: ringR + iconBox * 0.96
-    readonly property real innerR: Math.max(Theme.s(64) * uiScale, ringR - iconBox * 0.90)
+    readonly property real innerR: Math.max(Skin.s(64) * uiScale, ringR - iconBox * 0.90)
 
     property int hoveredIndex: -1
     readonly property int effIndex: hoveredIndex >= 0 ? hoveredIndex : forceSlice
@@ -31,7 +31,7 @@ Item {
     // window's title + "(i/N)" so scrolling previews which window will be targeted.
     readonly property string shownLabel: {
         if (effIndex < 0 || effIndex >= count) return forceLabel
-        void Launcher.winSel; void Hyprland.toplevels.values
+        void Launcher.winSel; void Compositor.windows
         var app = ring[effIndex]
         var n = Launcher.windowsFor(app).length
         if (n <= 1) return app.name
@@ -44,10 +44,10 @@ Item {
     // live thumbnail source: the selected window of the hovered app (settings-gated).
     // Only in the interactive wheel (uiScale 1), never the tiny settings preview.
     readonly property var thumbSource: {
-        void Launcher.winSel; void Hyprland.toplevels.values
+        void Launcher.winSel; void Compositor.windows
         if (!st.thumbnails || effIndex < 0 || effIndex >= count) return null
         var w = Launcher.windowFor(ring[effIndex])
-        return w ? w.wayland : null
+        return w ? Compositor.capture(w) : null
     }
     readonly property bool thumbActive: thumbSource !== null
 
@@ -63,12 +63,16 @@ Item {
 
     // palette
     function mixw(c, t) { return Qt.rgba(c.r * (1 - t) + t, c.g * (1 - t) + t, c.b * (1 - t) + t, 1) }
-    readonly property color accentC: st.accent
-    readonly property color bandC:   st.bg
+    readonly property color accentC: Skin.accent
+    readonly property color bandC:   Skin.bg
     readonly property color sectorC: mixw(accentC, 0.04)
     readonly property real  bandLum: 0.299 * bandC.r + 0.587 * bandC.g + 0.114 * bandC.b
-    readonly property color edgeC:   bandLum > 0.5 ? Qt.rgba(0, 0, 0, 1) : Qt.rgba(1, 1, 1, 1)
-    readonly property real  edgeA:   bandLum > 0.5 ? 0.10 : 0.14
+    // ring outline. A theme with a solid `edge` colour gets a bold cell-shaded border;
+    // otherwise fall back to the subtle auto edge that adapts to the band's luminance.
+    readonly property bool  cellEdge: Skin.edge.a > 0.001
+    readonly property color edgeC:   cellEdge ? Skin.edge : (bandLum > 0.5 ? Qt.rgba(0, 0, 0, 1) : Qt.rgba(1, 1, 1, 1))
+    readonly property real  edgeA:   cellEdge ? Skin.edge.a : (bandLum > 0.5 ? 0.10 : 0.14)
+    readonly property real  edgeW:   (cellEdge ? Skin.s(Skin.edgeWidth) : 1) * uiScale
 
     implicitWidth: outerR * 2
     implicitHeight: outerR * 2
@@ -76,10 +80,12 @@ Item {
     // geometry
     readonly property real cx: width / 2
     readonly property real cy: height / 2
-    readonly property real sw: Theme.s(12) * uiScale
+    readonly property real sw: Skin.s(12) * uiScale
     readonly property real segAng: count > 0 ? 2 * Math.PI / count : 0
-    readonly property real ro: outerR - sw / 2 - 3 * uiScale
-    readonly property real ri: innerR + sw / 2 + 3 * uiScale
+    // cell-shaded wedge: tuck the fill/divider ends half a border-width UNDER the rim arcs, so
+    // the fill's AA edge can't bleed a hairline into the hole/outside. Non-cell: soft inset pill.
+    readonly property real ro: outerR - (cellEdge ? edgeW / 2 : sw / 2 + 3 * uiScale)
+    readonly property real ri: innerR + (cellEdge ? edgeW / 2 : sw / 2 + 3 * uiScale)
     // FULL slice, no angular gap — zones tile the circle equally
     readonly property real a0: -Math.PI / 2 - segAng / 2
     readonly property real a1: -Math.PI / 2 + segAng / 2
@@ -134,11 +140,11 @@ Item {
             ctx.globalCompositeOperation = "destination-out"
             ctx.beginPath(); ctx.arc(c, c, wheel.innerR, 0, 2 * Math.PI); ctx.closePath(); ctx.fill()
             ctx.globalCompositeOperation = "source-over"
-            ctx.lineWidth = 1; ctx.strokeStyle = css(wheel.edgeC, wheel.edgeA * op)
-            ctx.beginPath(); ctx.arc(c, c, wheel.outerR - 0.5, 0, 2 * Math.PI); ctx.stroke()
-            ctx.beginPath(); ctx.arc(c, c, wheel.innerR + 0.5, 0, 2 * Math.PI); ctx.stroke()
         }
         Connections { target: Launcher; function onSettingsChanged() { donut.requestPaint() } }
+        // theme colours resolve async after a switch — repaint when the band or edge changes
+        Connections { target: wheel; function onBandCChanged() { donut.requestPaint() } }
+        Connections { target: wheel; function onEdgeCChanged() { donut.requestPaint() } }
         onWidthChanged: requestPaint()
     }
 
@@ -159,10 +165,12 @@ Item {
         transformOrigin: Item.Center
         rotation: wheel.sectorRotation
         Behavior on rotation { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+        // accent fill only — no navy around the arcs (those are the ring's own outline, drawn
+        // by the rim on top). In cell mode the stroke is hairline so the fill doesn't bleed.
         ShapePath {
             fillColor: wheel.sectorC
             strokeColor: wheel.sectorC
-            strokeWidth: wheel.sw
+            strokeWidth: wheel.cellEdge ? 1 : wheel.sw
             joinStyle: ShapePath.RoundJoin
             capStyle: ShapePath.RoundCap
             startX: wheel.cx + wheel.ro * Math.cos(wheel.a0)
@@ -174,6 +182,39 @@ Item {
                            startAngle: wheel.a1 * 180 / Math.PI; sweepAngle: -(wheel.a1 - wheel.a0) * 180 / Math.PI }
             PathLine { x: wheel.cx + wheel.ro * Math.cos(wheel.a0); y: wheel.cy + wheel.ro * Math.sin(wheel.a0) }
         }
+        // internal dividers only: the two radial edges (the "up/down" sides between slices).
+        // Their ends tuck under the rim's arc borders, so the outline is closed but the wedge
+        // adds no border of its own on the outer/inner arcs.
+        ShapePath {
+            fillColor: "transparent"
+            strokeColor: wheel.cellEdge ? wheel.edgeC : "transparent"
+            strokeWidth: wheel.cellEdge ? wheel.edgeW : 0
+            capStyle: ShapePath.FlatCap
+            startX: wheel.cx + wheel.ro * Math.cos(wheel.a0)
+            startY: wheel.cy + wheel.ro * Math.sin(wheel.a0)
+            PathLine { x: wheel.cx + wheel.ri * Math.cos(wheel.a0); y: wheel.cy + wheel.ri * Math.sin(wheel.a0) }
+            PathMove { x: wheel.cx + wheel.ro * Math.cos(wheel.a1); y: wheel.cy + wheel.ro * Math.sin(wheel.a1) }
+            PathLine { x: wheel.cx + wheel.ri * Math.cos(wheel.a1); y: wheel.cy + wheel.ri * Math.sin(wheel.a1) }
+        }
+    }
+
+    // ring outline drawn ON TOP of the accent sector, so the outer/hole arcs are one clean,
+    // continuous navy stroke — no seam where the sector's layer meets the band underneath.
+    Canvas {
+        id: rim
+        anchors.fill: parent
+        onPaint: {
+            var ctx = getContext("2d"); ctx.reset()
+            var c = width / 2, op = wheel.st.wheelOpacity, ew = wheel.edgeW
+            function css(col, a) { return "rgba(" + Math.round(col.r * 255) + "," + Math.round(col.g * 255) + "," + Math.round(col.b * 255) + "," + a + ")" }
+            ctx.lineWidth = ew; ctx.strokeStyle = css(wheel.edgeC, wheel.edgeA * op)
+            ctx.beginPath(); ctx.arc(c, c, wheel.outerR - ew / 2, 0, 2 * Math.PI); ctx.stroke()
+            ctx.beginPath(); ctx.arc(c, c, wheel.innerR + ew / 2, 0, 2 * Math.PI); ctx.stroke()
+        }
+        Connections { target: Launcher; function onSettingsChanged() { rim.requestPaint() } }
+        Connections { target: wheel; function onBandCChanged() { rim.requestPaint() } }
+        Connections { target: wheel; function onEdgeCChanged() { rim.requestPaint() } }
+        onWidthChanged: requestPaint()
     }
 
     // centre name pill (hidden when the settings button is up). In actions mode
@@ -184,10 +225,10 @@ Item {
         anchors.verticalCenterOffset: Launcher.mode === "actions"
                                       ? wheel.innerR * 0.46 * wheel.uiScale : 0
         z: 3
-        implicitWidth: label.implicitWidth + Theme.s(24) * wheel.uiScale
-        implicitHeight: label.implicitHeight + Theme.s(12) * wheel.uiScale
-        radius: Theme.s(9) * wheel.uiScale
-        color: Theme.labelPillBg
+        implicitWidth: label.implicitWidth + Skin.s(24) * wheel.uiScale
+        implicitHeight: label.implicitHeight + Skin.s(12) * wheel.uiScale
+        radius: Skin.s(9) * wheel.uiScale
+        color: Skin.labelPillBg
         visible: wheel.st.showLabels && !wheel.showSettingsBtn && !wheel.thumbActive
         opacity: wheel.shownLabel !== "" ? 1 : 0
         scale: wheel.shownLabel !== "" ? 1 : 0.85
@@ -198,7 +239,7 @@ Item {
             anchors.centerIn: parent
             text: wheel.shownLabel
             color: "white"
-            font.family: Theme.font; font.pixelSize: Theme.s(14) * wheel.uiScale; font.weight: Font.Medium
+            font.family: Skin.font; font.pixelSize: Skin.s(14) * wheel.uiScale; font.weight: Font.Medium
             renderType: Text.NativeRendering
         }
     }
@@ -227,8 +268,8 @@ Item {
             // whole preview (frame + caption) fits inside the hole circle: a square of
             // side avail centred in the hole has its corners at 0.92·innerR < innerR.
             readonly property real avail: wheel.innerR * 1.3
-            readonly property real m: Theme.s(4) * wheel.uiScale     // frame margin
-            readonly property real gap: Theme.s(6) * wheel.uiScale
+            readonly property real m: Skin.s(4) * wheel.uiScale     // frame margin
+            readonly property real gap: Skin.s(6) * wheel.uiScale
             readonly property real maxW: avail - 2 * m
             readonly property real maxH: avail - cap.implicitHeight - gap - 2 * m
             implicitWidth: avail
@@ -236,7 +277,7 @@ Item {
             Rectangle {   // frame behind the capture
                 anchors.fill: view; anchors.margins: -thumb.m
                 color: Qt.rgba(8/255, 8/255, 10/255, 0.94)
-                radius: Theme.s(10) * wheel.uiScale
+                radius: Skin.s(10) * wheel.uiScale
                 border.width: 1; border.color: Qt.rgba(1, 1, 1, 0.16)
             }
             ScreencopyView {
@@ -261,7 +302,7 @@ Item {
                 Text {
                     id: capTxt
                     text: wheel.shownLabel
-                    color: "white"; font.family: Theme.font; font.pixelSize: Theme.s(12) * wheel.uiScale
+                    color: "white"; font.family: Skin.font; font.pixelSize: Skin.s(12) * wheel.uiScale
                     font.weight: Font.Medium; renderType: Text.NativeRendering
                     x: cap.scrollW > 0 ? cap.off : (cap.width - implicitWidth) / 2
                 }
@@ -291,18 +332,39 @@ Item {
             z: wheel.effIndex === index ? 2 : 1
 
             // open windows of this app (reactive on toplevels + selection)
-            readonly property int winCount: { void Hyprland.toplevels.values; return modelData ? Launcher.windowsFor(modelData).length : 0 }
-            readonly property int winSelIdx: { void Hyprland.toplevels.values; void Launcher.winSel; return modelData ? Launcher.selectedWindowIndex(modelData) : -1 }
+            readonly property int winCount: { void Compositor.windows; return modelData ? Launcher.windowsFor(modelData).length : 0 }
+            readonly property int winSelIdx: { void Compositor.windows; void Launcher.winSel; return modelData ? Launcher.selectedWindowIndex(modelData) : -1 }
 
             readonly property bool glyphOnly: !slot.modelData.icon && !!slot.modelData.glyph
+            readonly property string iconSrc: Launcher.iconSource(slot.modelData.icon)
             Image {
                 id: iconImg
                 anchors.centerIn: parent
-                visible: !slot.glyphOnly
-                width: wheel.iconBox - Theme.s(10) * wheel.uiScale; height: width
+                visible: !slot.glyphOnly && slot.iconSrc !== "" && iconImg.status !== Image.Error
+                width: wheel.iconBox - Skin.s(10) * wheel.uiScale; height: width
                 sourceSize.width: width; sourceSize.height: width
-                source: Launcher.iconSource(slot.modelData.icon)
+                source: slot.iconSrc
                 smooth: true
+                scale: wheel.effIndex === slot.index ? 1.14 : 1
+                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
+                // action icons are symbolic (fixed light fill) — recolour to the chosen
+                // tint, or an adaptive default that stays visible on the band. App icons
+                // (not actions) keep their real colours.
+                layer.enabled: !!slot.modelData.isAction
+                layer.effect: MultiEffect {
+                    colorization: 1.0
+                    colorizationColor: slot.modelData.color ? slot.modelData.color
+                                     : (wheel.bandLum > 0.5 ? "#191a2e" : "white")
+                }
+            }
+            // icon couldn't be resolved (app ships no themed icon): fall back to the
+            // item's own glyph, else a generic "app window" — never a broken square.
+            Text {
+                anchors.centerIn: parent
+                visible: !slot.glyphOnly && (slot.iconSrc === "" || iconImg.status === Image.Error)
+                text: slot.modelData.glyph || Launcher.gApp
+                font.family: Skin.iconFont; font.pixelSize: wheel.iconBox * 0.46
+                color: wheel.bandLum > 0.5 ? "#191a2e" : "white"; renderType: Text.NativeRendering
                 scale: wheel.effIndex === slot.index ? 1.14 : 1
                 Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
             }
@@ -311,8 +373,8 @@ Item {
                 anchors.centerIn: parent
                 visible: slot.glyphOnly
                 text: slot.modelData.glyph || ""
-                font.family: Theme.iconFont; font.pixelSize: wheel.iconBox * 0.46
-                color: "white"; renderType: Text.NativeRendering
+                font.family: Skin.iconFont; font.pixelSize: wheel.iconBox * 0.46
+                color: wheel.bandLum > 0.5 ? "#191a2e" : "white"; renderType: Text.NativeRendering
                 scale: wheel.effIndex === slot.index ? 1.14 : 1
                 Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
             }
@@ -321,16 +383,16 @@ Item {
             // Scroll over the app to change the selection (see MouseArea.onWheel).
             Row {
                 visible: slot.winCount > 0
-                spacing: Theme.s(3) * wheel.uiScale
+                spacing: Skin.s(3) * wheel.uiScale
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.top: iconImg.bottom
-                anchors.topMargin: Theme.s(2) * wheel.uiScale
+                anchors.topMargin: Skin.s(2) * wheel.uiScale
                 Repeater {
                     model: Math.min(slot.winCount, 6)
                     delegate: Rectangle {
                         required property int index
                         readonly property bool sel: slot.winCount > 1 && index === slot.winSelIdx
-                        width: Theme.s(5) * wheel.uiScale; height: width; radius: width / 2
+                        width: Skin.s(5) * wheel.uiScale; height: width; radius: width / 2
                         color: sel ? wheel.accentC
                              : (wheel.bandLum > 0.5 ? Qt.rgba(0, 0, 0, 0.55) : Qt.rgba(1, 1, 1, 0.85))
                         scale: sel ? 1.2 : 1
@@ -369,20 +431,35 @@ Item {
         }
     }
 
-    // settings button (appears after 2s hovering the hole) — the CuteRing logo
+    // settings button (appears after 2s hovering the hole) — the RadiAll logo
     Item {
         anchors.centerIn: parent
-        width: Theme.s(54) * wheel.uiScale; height: width
+        width: Skin.s(82) * wheel.uiScale; height: width
         visible: wheel.showSettingsBtn || opacity > 0.01
         opacity: wheel.showSettingsBtn ? 1 : 0
         scale: wheel.showSettingsBtn ? 1 : 0.6
         Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
         Behavior on scale   { NumberAnimation { duration: 180; easing.type: Easing.OutBack } }
-        Image {
+        // white disc behind the radish — a soft drop shadow makes it float (the effect)
+        Rectangle {
             anchors.centerIn: parent
             width: parent.width; height: width
+            radius: width / 2
+            color: "white"
+            layer.enabled: true
+            layer.effect: MultiEffect {
+                shadowEnabled: true
+                shadowColor: Qt.rgba(0, 0, 0, 0.45)
+                shadowBlur: 0.7
+                shadowVerticalOffset: 3
+                blurMax: 24
+            }
+        }
+        Image {
+            anchors.centerIn: parent
+            width: parent.width * 0.82; height: width
             sourceSize.width: width; sourceSize.height: width
-            source: "CuteRing.png"
+            source: "RadiAll.png"
             smooth: true
         }
     }

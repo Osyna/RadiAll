@@ -1,5 +1,6 @@
 import Quickshell
 import QtQuick
+import QtQuick.Effects
 import "../services"
 
 // Per-app action menu: a half-circle of buttons above the main wheel, shown when
@@ -12,12 +13,12 @@ Item {
     readonly property var actions: app ? Launcher.actionsFor(app) : []
     property string hoveredLabel: ""
 
-    readonly property real mainOuterR: Theme.s(Launcher.settings.ringRadius) + Theme.s(Launcher.settings.iconSize) * 0.96
-    readonly property real gap: Theme.s(10)
-    readonly property real btnR: Theme.s(23)
+    readonly property real mainOuterR: Skin.s(Launcher.settings.ringRadius) + Skin.s(Launcher.settings.iconSize) * 0.96
+    readonly property real gap: Skin.s(10)
+    readonly property real btnR: Skin.s(23)
     readonly property real arcRadius: mainOuterR + gap + btnR
-    readonly property real bandInner: mainOuterR + Theme.s(3)
-    readonly property real bandOuter: arcRadius + btnR + Theme.s(8)
+    readonly property real bandInner: mainOuterR + Skin.s(3)
+    readonly property real bandOuter: arcRadius + btnR + Skin.s(8)
 
     implicitWidth: bandOuter * 2
     implicitHeight: bandOuter * 2
@@ -68,7 +69,7 @@ Item {
 
             Rectangle {
                 anchors.fill: parent; radius: width / 2
-                color: ma.containsMouse ? Launcher.settings.accent : Qt.rgba(1, 1, 1, 0.10)
+                color: ma.containsMouse ? Skin.accent : Skin.tint(0.10)
                 Behavior on color { ColorAnimation { duration: 120 } }
                 scale: ma.containsMouse ? 1.12 : 1
                 Behavior on scale { NumberAnimation { duration: 130; easing.type: Easing.OutBack } }
@@ -79,13 +80,20 @@ Item {
                     visible: !!b.modelData.icon
                     source: b.modelData.icon ? Launcher.iconSource(b.modelData.icon) : ""
                     smooth: true
+                    // symbolic icons ship a fixed light fill — recolour to the chosen tint
+                    layer.enabled: !!b.modelData.icon
+                    layer.effect: MultiEffect {
+                        colorization: 1.0
+                        colorizationColor: b.modelData.color ? b.modelData.color : "white"
+                    }
                 }
                 Text {
                     anchors.centerIn: parent
                     visible: !b.modelData.icon
                     text: b.modelData.glyph || ""
-                    font.family: Theme.iconFont; font.pixelSize: Theme.s(18)
-                    color: "white"; renderType: Text.NativeRendering
+                    font.family: Skin.iconFont; font.pixelSize: Skin.s(18)
+                    color: b.modelData.color ? b.modelData.color : "white"
+                    renderType: Text.NativeRendering
                 }
             }
             MouseArea {
@@ -101,15 +109,15 @@ Item {
     // label pill above the arc (app name, or the hovered action)
     Rectangle {
         anchors.horizontalCenter: parent.horizontalCenter
-        y: arc.cy - arc.arcRadius - arc.btnR - Theme.s(8) - height
-        implicitWidth: lbl.implicitWidth + Theme.s(22); implicitHeight: lbl.implicitHeight + Theme.s(10)
-        radius: Theme.s(9)
-        color: Theme.labelPillBg
+        y: arc.cy - arc.arcRadius - arc.btnR - Skin.s(8) - height
+        implicitWidth: lbl.implicitWidth + Skin.s(22); implicitHeight: lbl.implicitHeight + Skin.s(10)
+        radius: Skin.s(9)
+        color: Skin.labelPillBg
         Text {
             id: lbl
             anchors.centerIn: parent
             text: arc.hoveredLabel !== "" ? arc.hoveredLabel : (arc.app ? arc.app.name : "")
-            color: "white"; font.family: Theme.font; font.pixelSize: Theme.s(13); font.weight: Font.Medium
+            color: "white"; font.family: Skin.font; font.pixelSize: Skin.s(13); font.weight: Font.Medium
             renderType: Text.NativeRendering
         }
     }

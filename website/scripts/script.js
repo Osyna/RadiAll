@@ -59,11 +59,17 @@
     const pill = $("hub-pill");
     if (wheel) {
         const tiles = Array.from(wheel.querySelectorAll(".tile"));
-        let idx = 0, timer = null;
+        const step = 360 / tiles.length;
+        let idx = 0, angle = 0, timer = null;
 
         function select(i) {
             idx = (i + tiles.length) % tiles.length;
-            wheel.style.setProperty("--a", idx * 60 + "deg");
+            // accumulate the angle, always rotating the short way (no full-circle spin at wrap)
+            const target = idx * step;
+            let cur = ((angle % 360) + 360) % 360;
+            let delta = ((target - cur) % 360 + 540) % 360 - 180;
+            angle += delta;
+            wheel.style.setProperty("--a", angle + "deg");
             tiles.forEach((t, n) => t.classList.toggle("on", n === idx));
             if (pill) pill.textContent = tiles[idx].dataset.name || "";
         }

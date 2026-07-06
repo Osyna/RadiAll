@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+# radiall — control the RadiAll radial launcher from the shell, so its rings are
+# trivial to bind in your compositor (e.g.  bind = SUPER, A, exec, radiall --apps).
+set -euo pipefail
+
+NAME="radiall"
+CFG="${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/$NAME"
+QML="$CFG/shell.qml"          # launch by path (qs -p): works even with a default ~/.config/quickshell/shell.qml
+QS="$(command -v qs || command -v quickshell || true)"
+
+die()  { echo "radiall: $*" >&2; exit 1; }
+
+# The qs instance(s) + tray helper(s) of the installed launcher. We launch by PATH
+# (qs -p …/shell.qml) so they don't appear in `qs list` and several can pile up;
+# match them all directly so stop/uninstall clean every one (instance AND tray).
+rl_pids() {
+    pgrep -f "$CFG/(shell.qml|launcher/tray.py)" 2>/dev/null || true
+}
+running_pid() {   # one live instance pid (for status / start checks), or empty
+    pgrep -f "$QML$" 2>/dev/null | head -1
+}
+
+# Open a ring by poking the running instance over Quickshell IPC — compositor-
+# agnostic, so it works on Hyprland and any other Wayland compositor alike.
+ring() {
+    [ -n "$QS" ] || die "Quickshell not found. Install it, then re-run."
+    "$QS" -p "$QML" ipc call launcher "$1" >/dev/null 2>&1 \
+        || die "couldn't reach the launcher. Is it running?  (radiall --start)"
+}
+
+start() {
+    [ -n "$QS" ] || die "Quickshell not found. Install it, then re-run."
+    [ -d "$CFG" ] || die "not installed at $CFG — run the installer first (install.sh)."
+    if [ -n "$(running_pid)" ]; then echo "radiall: already running"; return 0; fi
+    local strays; strays="$(rl_pids)"; [ -n "$strays" ] && kill $strays 2>/dev/null || true   # clear orphan trays
+    setsid -f "$QS" -p "$QML" >/dev/null 2>&1
+    echo "radiall: started"
+}
+
+stop() {
+    local pids; pids="$(rl_pids)"
+    [ -n "$pids" ] || { echo "radiall: not running"; return 0; }
+    kill $pids 2>/dev/null || true
+    echo "radiall: stopped ($(echo $pids | wc -w) process(es))"
+}
+
+status() {
+    local pid; pid="$(running_pid)"
+    [ -n "$pid" ] && { echo "radiall: running (pid $pid)"; return 0; }
+    echo "radiall: not running"; return 1
+}
+
+# Print ready-to-paste Hyprland binds. `radiall --binds >> ~/.config/hypr/hyprland.conf`
+binds() {
+    cat <<'EOF'
+# RadiAll ring shortcuts — paste into ~/.config/hypr/hyprland.conf (or a sourced file).
+# Change the keys to taste; each just opens one ring.
+bind = SUPER, A, exec, radiall --apps       # app ring
+bind = SUPER, W, exec, radiall --windows    # open-windows ring
+bind = SUPER, D, exec, radiall --actions    # focused-window actions ring
+# optional: open settings
+# bind = SUPER, S, exec, radiall --settings
+EOF
+}
+
+usage() {
+    cat <<'EOF'
+RadiAll — a cute radial launcher for Wayland (Hyprland-first).
+
+Usage: radiall <command>
+
+Rings (bind these to keys in your compositor):
+  --apps        open the app ring
+  --windows     open the open-windows ring
+  --actions     open the focused-window actions ring
+  --settings    open the settings panel
+
+Lifecycle:
+  --start       start the launcher (standalone install)
+  --stop        stop the running launcher
+  --restart     restart it
+  --status      is it running?  (exit 0 = yes, 1 = no)
+
+Setup:
+  --binds       print ready-to-paste Hyprland bind lines
+  --version     print version
+  --help, -h    show this help
+
+Bind example (~/.config/hypr/hyprland.conf):
+  bind = SUPER, A, exec, radiall --apps
+  bind = SUPER, W, exec, radiall --windows
+  bind = SUPER, D, exec, radiall --actions
+
+Tip:  radiall --binds >> ~/.config/hypr/hyprland.conf   then  hyprctl reload
+EOF
+}
+
+case "${1:-}" in
+    --apps|apps)          ring apps ;;
+    --windows|windows)    ring windows ;;
+    --actions|actions)    ring actions ;;
+    --settings|settings)  ring settings ;;
+    --start|start)        start ;;
+    --stop|stop)          stop ;;
+    --restart|restart)    stop; sleep 0.4; start ;;
+    --status|status)      status ;;
+    --binds|binds)        binds ;;
+    --version|-v)         echo "RadiAll 1.0" ;;
+    --help|-h|help|"")    usage ;;
+    *) echo "radiall: unknown command '$1'" >&2; echo "try: radiall --help" >&2; exit 1 ;;
+esac

@@ -1,0 +1,11 @@
+{
+  "bg": "#2e3440",
+  "glassBg": "#d92e3440",
+  "panelBg": "#fc2e3440",
+  "labelPillBg": "#f53b4252",
+
+  "accent": "#88c0d0",
+  "yellow": "#ebcb8b",
+  "red": "#bf616a",
+  "green": "#a3be8c"
+}

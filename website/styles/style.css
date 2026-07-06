@@ -1,21 +1,22 @@
 /* ============================================================
-   Radial Launcher — site theme. Playful pixel/retro to match the
-   cute blue-donut logo: chunky ink borders, hard offset shadows,
-   donut-blue + dough-tan palette, pixel + rounded fonts.
+   RadiAll — site theme. Playful pixel/cell-shaded to match the
+   kawaii radish logo: chunky ink borders, hard offset shadows,
+   radish-red + leaf-green palette, pixel + rounded fonts.
+   (--blue* keep their names but now hold the radish reds.)
    ============================================================ */
 
 :root {
-    --ink:      #191a2e;   /* pixel outline / text */
-    --blue:     #2f6fe0;   /* donut glaze */
-    --blue-d:   #2456bd;
-    --blue-l:   #6a9cf2;
-    --blue-100: #dbe7fb;
-    --blue-50:  #eef4fe;
-    --tan:      #ecca8b;   /* dough */
-    --tan-l:    #f6e6c1;
+    --ink:      #0c183c;   /* pixel outline / text (radish navy) */
+    --blue:     #e44854;   /* radish red */
+    --blue-d:   #c0243c;
+    --blue-l:   #f07878;
+    --blue-100: #f7cfd4;
+    --blue-50:  #fef0f1;
+    --tan:      #84b43c;   /* leaf green */
+    --tan-l:    #cbe6a0;
     --cream:    #fffdf6;
     --paper:    #ffffff;
-    --page:     #e7effb;
+    --page:     #fbf3ee;
     --muted:    #6b7285;
     --pix: 'Press Start 2P', ui-monospace, monospace;
     --round: 'Baloo 2', system-ui, -apple-system, sans-serif;
@@ -34,7 +35,7 @@ body {
     color: var(--ink);
     background-color: var(--page);
     background-image:
-        radial-gradient(rgba(47, 111, 224, 0.10) 1.5px, transparent 1.5px);
+        radial-gradient(rgba(228, 72, 84, 0.10) 1.5px, transparent 1.5px);
     background-size: 22px 22px;
     min-height: 100vh;
     display: flex;
@@ -200,39 +201,60 @@ a { color: inherit; text-decoration: none; }
 }
 .band {
     position: absolute; inset: 6%; border-radius: 50%;
-    background: radial-gradient(circle at 38% 32%, #f2f7ff, var(--blue-100));
-    box-shadow: 0 0 0 3px var(--ink), inset 0 0 0 3px var(--ink), 8px 10px 0 rgba(25,26,46,0.14);
+    background: radial-gradient(circle at 38% 32%, #ffe7d8, #f6c4a4);
+    box-shadow: 8px 10px 0 rgba(12,24,60,0.16);
 }
 .sector {
     position: absolute; inset: 6%; border-radius: 50%; z-index: 1;
-    background: conic-gradient(from calc(var(--a) - 28deg), var(--blue) 0 56deg, transparent 56deg 360deg);
-    -webkit-mask: radial-gradient(circle, transparent 0 51%, #000 52%);
-            mask: radial-gradient(circle, transparent 0 51%, #000 52%);
-    opacity: 0.9; transition: --a 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+    /* red wedge with thin navy radial edges (cell-shaded), centred on the active tile.
+       closest-side sizing makes the ring span from the hole out to the band edge. */
+    background: conic-gradient(from calc(var(--a) - 22.5deg),
+        var(--ink) 0 2deg, var(--blue) 2deg 43deg, var(--ink) 43deg 45deg, transparent 45deg 360deg);
+    -webkit-mask: radial-gradient(circle closest-side, transparent 0 50%, #000 51%);
+            mask: radial-gradient(circle closest-side, transparent 0 50%, #000 51%);
+    transition: --a 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
-.tiles { position: absolute; inset: 0; z-index: 2; }
+/* navy ring outline drawn on top of the wedge, so every section's border stays clean */
+.rim {
+    position: absolute; inset: 6%; border-radius: 50%; z-index: 2; pointer-events: none;
+    /* one continuous ring (inner + outer half) so there's no seam where two borders meet */
+    box-shadow: inset 0 0 0 4px var(--ink), 0 0 0 4px var(--ink);
+}
+.tiles { position: absolute; inset: 0; z-index: 3; }
 .tile {
     position: absolute; top: 50%; left: 50%;
-    width: clamp(42px, 6vw, 54px); height: clamp(42px, 6vw, 54px);
-    display: grid; place-items: center; font-size: clamp(20px, 2.6vw, 26px);
-    background: var(--cream); border: 3px solid var(--ink); border-radius: 12px;
+    width: clamp(40px, 5.6vw, 50px); height: clamp(40px, 5.6vw, 50px);
+    display: grid; place-items: center;
+    background: #fffaf3; border: 3px solid var(--ink); border-radius: 12px;
     box-shadow: 2px 2px 0 var(--ink); cursor: pointer;
     transform:
         translate(-50%, -50%)
-        rotate(calc(var(--i) * 60deg)) translateY(calc(var(--ring) * -1)) rotate(calc(var(--i) * -60deg));
+        rotate(calc(var(--i) * 45deg)) translateY(calc(var(--ring) * -1)) rotate(calc(var(--i) * -45deg));
     transition: scale 0.16s cubic-bezier(0.2, 1.4, 0.4, 1), background 0.15s, box-shadow 0.15s;
 }
+.app-ic { width: 68%; height: 68%; display: block; }
 .tile:hover, .tile.on { background: #fff; scale: 1.16; box-shadow: 3px 3px 0 var(--blue); }
 .hub {
     position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-    width: 46%; height: 46%; border-radius: 50%; z-index: 3;
-    background: var(--cream); box-shadow: 0 0 0 3px var(--ink), inset 0 2px 6px rgba(25,26,46,0.12);
-    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+    width: 47%; height: 47%; border-radius: 50%; z-index: 4;
+    background: #0f1017; box-shadow: 0 0 0 4px var(--ink), inset 0 2px 14px rgba(0,0,0,0.6);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px;
+    overflow: hidden;
 }
-.hub img { width: 56%; image-rendering: pixelated; }
+.hub-screen {
+    width: 66%; height: 42%; border-radius: 9px; padding: 9px 10px;
+    background: linear-gradient(160deg, #1b1d2b, #101119);
+    border: 1px solid rgba(255,255,255,0.08);
+    display: flex; flex-direction: column; justify-content: center; gap: 5px;
+}
+.hub-line { height: 3px; border-radius: 2px; background: rgba(255,255,255,0.15); }
+.hub-line:first-child { width: 45%; background: rgba(90,209,107,0.6); }
+.hub-line.short { width: 68%; }
 .hub-pill {
     font-family: var(--round); font-weight: 700; font-size: 12px; color: #fff;
-    background: var(--ink); border-radius: 7px; padding: 3px 10px; white-space: nowrap;
+    background: var(--ink); border-radius: 7px; padding: 3px 11px; white-space: nowrap;
+    margin-top: -15px; position: relative; z-index: 1;
+    box-shadow: 0 0 0 3px #0f1017;
 }
 .hint { font-family: var(--pix); font-size: 8px; color: var(--muted); }
 

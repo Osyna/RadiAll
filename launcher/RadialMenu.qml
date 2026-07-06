@@ -65,20 +65,20 @@ PanelWindow {
         active: Launcher.editing
         visible: active
         sourceComponent: Row {
-            spacing: Theme.s(36)
+            spacing: Skin.s(36)
 
             // live preview pane
             Rectangle {
-                width: Theme.s(330); height: Theme.s(560)
-                radius: Theme.s(20)
-                color: Theme.panelBg
-                border.width: 1; border.color: Qt.rgba(1, 1, 1, 0.10)
+                width: Skin.s(330); height: Skin.s(560)
+                radius: Skin.s(20)
+                color: Skin.panelBg
+                border.width: 1; border.color: Skin.tint(0.10)
                 clip: true
                 MouseArea { anchors.fill: parent }   // swallow stray clicks
                 Text {
-                    x: Theme.s(18); y: Theme.s(16)
-                    text: "Preview"; color: Theme.fgDim
-                    font.family: Theme.font; font.pixelSize: Theme.s(13); renderType: Text.NativeRendering
+                    x: Skin.s(18); y: Skin.s(16)
+                    text: "Preview"; color: Skin.fgDim
+                    font.family: Skin.font; font.pixelSize: Skin.s(13); renderType: Text.NativeRendering
                 }
                 Wheel {
                     anchors.centerIn: parent

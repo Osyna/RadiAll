@@ -1,3 +1,14 @@
 # runtime state written by the launcher (per-user, not shipped)
 apps.json
 launcher-settings.json
+
+# python bytecode (tray.py)
+__pycache__/
+*.pyc
+
+# personal agent config, not project docs
+CLAUDE.md
+
+# os / editor cruft
+.DS_Store
+*.swp

@@ -1,0 +1,28 @@
+{
+  "scale": 1.1,
+
+  "glassBg": "#85161618",
+  "glassHover": "#17ffffff",
+  "pillBg": "#26ffffff",
+  "pillHover": "#40ffffff",
+  "btnHover": "#17ffffff",
+  "btnActive": "#24ffffff",
+
+  "fg": "#e0ffffff",
+  "fgStrong": "#f2ffffff",
+  "fgDim": "#73ffffff",
+
+  "yellow": "#ffd60a",
+  "red": "#ff453a",
+  "green": "#30d158",
+
+  "sep": "#1fffffff",
+
+  "panelBg": "#fc18181a",
+  "labelPillBg": "#f51a202e",
+
+  "font": "SF Pro Text",
+  "fontDisplay": "SF Pro Display",
+  "iconFont": "JetBrainsMono Nerd Font",
+  "monoFont": "JetBrainsMono Nerd Font"
+}
