@@ -43,7 +43,15 @@ export struct ActionRow {
 }
 
 export struct InstalledRow {
+    idx: int,             // original index into the full installed list
     name: string,
     icon: image,
     has-icon: bool,
+}
+
+export struct IconPick {
+    name: string,         // icon file stem
+    set: string,          // icon set (lucide, tabler, ...)
+    path: string,         // absolute SVG path, stored into the action's icon
+    icon: image,
 }

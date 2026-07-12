@@ -87,6 +87,8 @@ pub struct Core {
     pub settings: Settings,
     pub apps: Vec<AppEntry>,
     pub index: AppIndex,
+    /// Glyph SVG library for action icons (set at daemon startup).
+    pub icons: crate::icons::IconLib,
     pub comp: Box<dyn Compositor>,
     pub windows: Vec<WindowInfo>,
     pub active: Option<WindowInfo>,
@@ -103,6 +105,7 @@ impl Core {
             settings,
             apps,
             index,
+            icons: crate::icons::IconLib::default(),
             comp,
             windows: Vec::new(),
             active: None,

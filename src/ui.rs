@@ -9,7 +9,7 @@ use crate::ring::{ActionTemplate, Core, FocusedApp, Mode, RingEntry};
 use crate::shortcuts;
 use crate::theme::{Rgba, Skin as SkinData};
 use crate::{
-    ActionRow, AppRow, ArcItem, InstalledRow, RingItem, RingWindow, SettingsWindow, Skin,
+    ActionRow, AppRow, ArcItem, IconPick, InstalledRow, RingItem, RingWindow, SettingsWindow, Skin,
 };
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 use std::cell::RefCell;
@@ -1029,6 +1029,46 @@ impl Ui {
         sw.set_pv_label(label.into());
     }
 
+    /// Installed-app picker rows, filtered by `query` (case-insensitive
+    /// substring). Rows carry their ORIGINAL index so add-installed(idx)
+    /// stays valid regardless of filtering.
+    fn installed_rows(core: &Core, query: &str) -> Vec<InstalledRow> {
+        let q = query.trim().to_lowercase();
+        core.index
+            .installed()
+            .iter()
+            .enumerate()
+            .filter(|(_, d)| q.is_empty() || d.name.to_lowercase().contains(&q))
+            .map(|(i, d)| {
+                let (icon, has_icon) = Self::load_image(&d.icon, 32);
+                InstalledRow {
+                    idx: i as i32,
+                    name: d.name.clone().into(),
+                    icon,
+                    has_icon,
+                }
+            })
+            .collect()
+    }
+
+    /// Icon-library picker rows for `query`, capped (search-as-you-type).
+    fn icon_pick_rows(core: &Core, query: &str) -> Vec<IconPick> {
+        core.icons
+            .search(query, 200)
+            .into_iter()
+            .map(|e| {
+                let path = e.path.to_string_lossy().to_string();
+                let (icon, _) = Self::load_image(&path, 24);
+                IconPick {
+                    name: e.name.clone().into(),
+                    set: e.set.clone().into(),
+                    path: path.into(),
+                    icon,
+                }
+            })
+            .collect()
+    }
+
     fn refresh_editor_models(self: &Rc<Self>) {
         let Some(sw) = self.settings_handle() else { return };
         let core = self.core.borrow();
@@ -1048,23 +1088,12 @@ impl Ui {
                 }
             })
             .collect();
-        let installed_rows: Vec<InstalledRow> = core
-            .index
-            .installed()
-            .iter()
-            .map(|d| {
-                let (icon, has_icon) = Self::load_image(&d.icon, 32);
-                InstalledRow {
-                    name: d.name.clone().into(),
-                    icon,
-                    has_icon,
-                }
-            })
-            .collect();
+        let installed_rows = Self::installed_rows(&core, "");
         let s = &core.settings;
         let sw = &sw;
         sw.set_apps(ModelRc::new(VecModel::from(apps_rows)));
         sw.set_installed(ModelRc::new(VecModel::from(installed_rows)));
+        sw.set_icon_lib_count(core.icons.len() as i32);
         sw.set_themes(ModelRc::new(VecModel::from(
             crate::theme::available()
                 .into_iter()
@@ -1184,9 +1213,24 @@ impl Ui {
 
     fn wire_editor(ui: &Rc<Self>, w: &SettingsWindow) {
 
-        // case-insensitive substring test for the installed-picker filter
-        w.on_name_matches(|name, query| {
-            query.is_empty() || name.to_lowercase().contains(&query.to_lowercase())
+        // picker filters run in Rust: re-push the models on every keystroke
+        let this = Rc::downgrade(ui);
+        w.on_pick_query(move |q| {
+            if let Some(ui) = this.upgrade() {
+                let rows = Self::installed_rows(&ui.core.borrow(), &q);
+                if let Some(sw) = ui.settings_handle() {
+                    sw.set_installed(ModelRc::new(VecModel::from(rows)));
+                }
+            }
+        });
+        let this = Rc::downgrade(ui);
+        w.on_icon_query(move |q| {
+            if let Some(ui) = this.upgrade() {
+                let rows = Self::icon_pick_rows(&ui.core.borrow(), &q);
+                if let Some(sw) = ui.settings_handle() {
+                    sw.set_icon_picks(ModelRc::new(VecModel::from(rows)));
+                }
+            }
         });
 
         let this = Rc::downgrade(ui);

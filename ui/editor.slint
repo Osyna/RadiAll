@@ -11,7 +11,7 @@
 
 import { ListView, ScrollView } from "std-widgets.slint";
 import { Skin } from "skin.slint";
-import { AppRow, ActionRow, InstalledRow } from "types.slint";
+import { AppRow, ActionRow, InstalledRow, IconPick } from "types.slint";
 
 // ---------------------------------------------------------------- controls --
 
@@ -394,7 +394,9 @@ export component Editor {
     in property <[AppRow]> apps;
     in property <int> selected-app: -1;
     in property <[ActionRow]> app-actions;     // actions of the selected app
-    in property <[InstalledRow]> installed;    // sorted installed-app picker
+    in property <[InstalledRow]> installed;    // app picker rows (Rust-filtered)
+    in property <[IconPick]> icon-picks;       // icon picker results (Rust-filtered)
+    in property <int> icon-lib-count;          // 0 -> show the "no library" hint
     in property <[string]> themes;
     in property <string> current-theme;
 
@@ -435,18 +437,16 @@ export component Editor {
     // snapshot the current effective look into ~/.config/radiall/themes/<name>.json
     callback save-theme(string);
 
-    // Case-insensitive substring test for the installed-app filter (Slint has
-    // no string `contains`). Rust wires this; the default handler disables
-    // filtering gracefully (every row matches).
-    pure callback name-matches(string /* name */, string /* query */) -> bool;
-    name-matches(n, q) => {
-        true
-    }
+    // Rust filters the installed list / icon library on these queries and
+    // re-pushes the `installed` / `icon-picks` models (Slint has no string
+    // `contains`, and Rust-side filtering keeps original indices intact).
+    callback pick-query(string);
+    callback icon-query(string);
 
     // ---- private state ----
     private property <int> cur-tab: 0;             // 0 = Apps, 1 = Look
     private property <bool> picking: false;        // installed-app picker overlay
-    private property <string> pick-filter: "";
+    private property <string> picking-icon-for: "";  // action id, "" = icon picker closed
     private property <bool> sel-ok: root.selected-app >= 0 && root.selected-app < root.apps.length;
 
     // custom-action color swatches (parallel arrays; "" = theme default)
@@ -594,7 +594,7 @@ export component Editor {
                         PillBtn {
                             text: "From installed…";
                             clicked => {
-                                root.pick-filter = "";
+                                root.pick-query("");   // reset the Rust-side filter
                                 root.picking = true;
                             }
                         }
@@ -621,6 +621,7 @@ export component Editor {
 
                         if root.sel-ok: ScrollView {
                             VerticalLayout {
+                                alignment: start;   // keep rows at the top, don't distribute slack
                                 padding: Skin.s(14);
                                 spacing: Skin.s(9);
 
@@ -828,6 +829,13 @@ export component Editor {
                                                     placeholder: "icon name or /path.svg";
                                                     edited(t) => {
                                                         root.set-custom-field(a.id, "icon", t);
+                                                    }
+                                                }
+                                                PillBtn {
+                                                    text: "Browse…";
+                                                    clicked => {
+                                                        root.icon-query("");
+                                                        root.picking-icon-for = a.id;
                                                     }
                                                 }
                                             }
@@ -1307,7 +1315,8 @@ export component Editor {
     // ------------------------------------------- installed-app picker overlay
     if root.picking: Rectangle {
         border-radius: Skin.s(20);
-        background: Skin.panel-bg;
+        // fully opaque: translucent panel-bg lets the list below ghost through
+        background: Skin.panel-bg.with-alpha(1.0);
         border-width: 1px;
         border-color: Skin.tint(0.10);
 
@@ -1339,17 +1348,14 @@ export component Editor {
                 value: "";
                 placeholder: "Search installed apps…";
                 edited(t) => {
-                    root.pick-filter = t.to-lowercase();
+                    root.pick-query(t);
                 }
             }
 
             ListView {
                 vertical-stretch: 1;
-                for entry[k] in root.installed: Rectangle {
-                    property <bool> hit: root.pick-filter == ""
-                        || root.name-matches(entry.name, root.pick-filter);
-                    height: self.hit ? Skin.s(40) : 0;
-                    visible: self.hit;
+                for entry in root.installed: Rectangle {
+                    height: Skin.s(40);
                     border-radius: Skin.s(8);
                     background: inst-ta.has-hover ? Skin.tint(0.10) : transparent;
                     HorizontalLayout {
@@ -1384,8 +1390,109 @@ export component Editor {
                     inst-ta := TouchArea {
                         mouse-cursor: pointer;
                         clicked => {
-                            root.add-installed(k);
+                            root.add-installed(entry.idx);
                             root.picking = false;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ------------------------------------------- action icon picker overlay
+    if root.picking-icon-for != "": Rectangle {
+        border-radius: Skin.s(20);
+        background: Skin.panel-bg.with-alpha(1.0);
+        border-width: 1px;
+        border-color: Skin.tint(0.10);
+
+        TouchArea { } // swallow clicks under the overlay
+
+        VerticalLayout {
+            padding: Skin.s(16);
+            spacing: Skin.s(10);
+
+            HorizontalLayout {
+                spacing: Skin.s(8);
+                IconBtn {
+                    glyph: "‹";
+                    clicked => {
+                        root.picking-icon-for = "";
+                    }
+                }
+                Text {
+                    text: "Pick an icon";
+                    font-family: Skin.font-display;
+                    font-size: Skin.s(17);
+                    font-weight: 600;
+                    color: Skin.fg-strong;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                }
+                Text {
+                    text: root.icon-lib-count + " icons";
+                    color: Skin.fg-dim;
+                    font-size: Skin.s(12);
+                    vertical-alignment: center;
+                }
+            }
+
+            Field {
+                value: "";
+                placeholder: "Search icons (reload, terminal, play, …)";
+                edited(t) => {
+                    root.icon-query(t);
+                }
+            }
+
+            if root.icon-lib-count == 0: Text {
+                text: "No icon library found. Drop SVG sets into ~/.config/radiall/icons/<set>/*.svg — the icon collection of a previous Quickshell-based install (~/.config/quickshell/icons) is picked up automatically.";
+                color: Skin.fg-dim;
+                font-size: Skin.s(12);
+                wrap: word-wrap;
+            }
+
+            ListView {
+                vertical-stretch: 1;
+                for entry in root.icon-picks: Rectangle {
+                    height: Skin.s(36);
+                    border-radius: Skin.s(8);
+                    background: ic-ta.has-hover ? Skin.tint(0.10) : transparent;
+                    HorizontalLayout {
+                        padding-left: Skin.s(10);
+                        padding-right: Skin.s(12);
+                        spacing: Skin.s(10);
+                        Rectangle {
+                            width: Skin.s(22);
+                            Image {
+                                width: Skin.s(22);
+                                height: Skin.s(22);
+                                y: (parent.height - self.height) / 2;
+                                source: entry.icon;
+                                colorize: Skin.fg;
+                                image-fit: contain;
+                            }
+                        }
+                        Text {
+                            text: entry.name;
+                            color: Skin.fg;
+                            font-size: Skin.s(13);
+                            vertical-alignment: center;
+                            overflow: elide;
+                            horizontal-stretch: 1;
+                        }
+                        Text {
+                            text: entry.set;
+                            color: Skin.fg-dim;
+                            font-size: Skin.s(11);
+                            vertical-alignment: center;
+                        }
+                    }
+                    ic-ta := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.set-custom-field(root.picking-icon-for, "icon", entry.path);
+                            root.picking-icon-for = "";
                         }
                     }
                 }

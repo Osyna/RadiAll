@@ -6,7 +6,7 @@
 //   SettingsWindow — normal window: live preview wheel + the editor.
 
 import { Skin } from "skin.slint";
-import { RingItem, ArcItem, AppRow, ActionRow, InstalledRow } from "types.slint";
+import { RingItem, ArcItem, AppRow, ActionRow, InstalledRow, IconPick } from "types.slint";
 import { Wheel, ActionArc } from "wheel.slint";
 import { Editor } from "editor.slint";
 
@@ -172,6 +172,8 @@ export component SettingsWindow inherits Window {
     in property <int> selected-app <=> ed.selected-app;
     in property <[ActionRow]> app-actions <=> ed.app-actions;
     in property <[InstalledRow]> installed <=> ed.installed;
+    in property <[IconPick]> icon-picks <=> ed.icon-picks;
+    in property <int> icon-lib-count <=> ed.icon-lib-count;
     in property <[string]> themes <=> ed.themes;
     in property <string> current-theme <=> ed.current-theme;
     in property <string> accent-hex <=> ed.accent-hex;
@@ -205,7 +207,8 @@ export component SettingsWindow inherits Window {
     callback reset-settings <=> ed.reset-settings;
     callback save-theme <=> ed.save-theme;
     callback close-requested <=> ed.close-requested;
-    pure callback name-matches <=> ed.name-matches;
+    callback pick-query <=> ed.pick-query;
+    callback icon-query <=> ed.icon-query;
 
     HorizontalLayout {
         padding: 18px;

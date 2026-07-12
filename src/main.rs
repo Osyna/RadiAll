@@ -7,6 +7,7 @@
 mod apps;
 mod compositor;
 mod config;
+mod icons;
 mod ipc;
 mod ring;
 mod shortcuts;
@@ -120,6 +121,7 @@ fn run_daemon() -> Result<(), Box<dyn std::error::Error>> {
     slint::invoke_from_event_loop(move || {
         let mut core = ring::Core::new(settings, app_list, index, comp);
         core.overlay_ready = overlay_ready;
+        core.icons = icons::IconLib::scan();
         let ui = match ui::Ui::new(core) {
             Ok(ui) => ui,
             Err(e) => {
