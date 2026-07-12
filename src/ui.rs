@@ -476,7 +476,7 @@ impl Ui {
         win.set_actions_mode(mode == Mode::Actions);
         // actions mode: focused app icon in the hole
         if mode == Mode::Actions {
-            if let Some(app) = self.core.borrow().focused_app() {
+            if let Some(app) = self.core.borrow().actions_target.clone() {
                 let (img, ok) = Self::load_image(&app.icon, 96);
                 win.set_focus_icon(img);
                 win.set_show_focus_icon(ok);
@@ -584,6 +584,8 @@ impl Ui {
             core.windows = ws;
             let active = core.comp.active_window();
             core.active = active;
+            // freeze the actions target NOW — the overlay steals focus next
+            core.actions_target = core.focused_app();
         }
         self.rebuild_ring();
         *self.open.borrow_mut() = true;

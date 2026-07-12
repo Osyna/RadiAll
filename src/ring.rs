@@ -97,6 +97,10 @@ pub struct Core {
     /// True when the compositor was configured (window rules) so the ring
     /// window is a real overlay; false -> the UI falls back to fullscreen.
     pub overlay_ready: bool,
+    /// The focused app SNAPSHOTTED when the actions ring opens: the overlay
+    /// itself takes keyboard focus right after, so building the ring from
+    /// the live active window would immediately wipe it. Frozen per open.
+    pub actions_target: Option<FocusedApp>,
 }
 
 impl Core {
@@ -111,6 +115,7 @@ impl Core {
             active: None,
             win_sel: HashMap::new(),
             overlay_ready: false,
+            actions_target: None,
         }
     }
 
@@ -218,7 +223,7 @@ impl Core {
                 });
                 ring
             }
-            Mode::Actions => match self.focused_app() {
+            Mode::Actions => match self.actions_target.clone() {
                 None => Vec::new(),
                 Some(app) => self
                     .actions_for(&app)
@@ -569,6 +574,24 @@ mod tests {
         let acts3 = core.actions_for(&app3);
         assert_eq!(acts3.len(), 1);
         assert!(matches!(acts3[0].kind, ActionKind::Launch));
+    }
+
+    #[test]
+    fn actions_ring_survives_overlay_focus_steal() {
+        let mut core = core_with(vec![win("1", "firefox", "page", true)]);
+        core.active = Some(win("1", "firefox", "page", true));
+        // open_ring snapshots the target...
+        core.actions_target = core.focused_app();
+        assert!(!core.ring_model(Mode::Actions).is_empty());
+        // ...then the overlay steals focus (active becomes None/our window):
+        // the ring must keep building from the frozen snapshot
+        core.active = None;
+        let ring = core.ring_model(Mode::Actions);
+        assert!(!ring.is_empty(), "actions ring wiped by focus change");
+        assert!(ring.iter().any(|e| e.name == "Close"));
+        // no snapshot (nothing focused at open) -> empty ring
+        core.actions_target = None;
+        assert!(core.ring_model(Mode::Actions).is_empty());
     }
 
     #[test]
