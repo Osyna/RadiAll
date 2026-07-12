@@ -69,6 +69,21 @@ impl Compositor for HyprlandCompositor {
         query_active(&self.req_path)
     }
 
+    /// Focused monitor's physical size via `j/monitors`.
+    fn output_size(&mut self) -> Option<(u32, u32)> {
+        let Value::Array(mons) = query_json(&self.req_path, "j/monitors")? else {
+            return None;
+        };
+        let mon = mons
+            .iter()
+            .find(|m| m["focused"].as_bool() == Some(true))
+            .or_else(|| mons.first())?;
+        Some((
+            mon["width"].as_u64()? as u32,
+            mon["height"].as_u64()? as u32,
+        ))
+    }
+
     fn watch(&mut self, tx: Sender<CompositorEvent>) {
         let req_path = self.req_path.clone();
         let event_path = self.event_path.clone();

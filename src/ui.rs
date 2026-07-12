@@ -593,7 +593,14 @@ impl Ui {
         }
         self.rebuild_ring();
         *self.open.borrow_mut() = true;
-        win.set_open(true);
+        // Pre-size to the focused output BEFORE mapping: the first committed
+        // frame is otherwise the preferred-size window at the compositor's
+        // default spot, flashing a mis-placed wheel until the float/resize
+        // window rules land.
+        let output = self.core.borrow_mut().comp.output_size();
+        if let Some((w, h)) = output {
+            win.window().set_size(slint::PhysicalSize::new(w, h));
+        }
         // Overlay via compositor rules (float + 100% size) when available;
         // real fullscreen makes compositors black out the windows behind.
         if !self.core.borrow().overlay_ready {
@@ -602,6 +609,9 @@ impl Ui {
         if let Err(e) = win.show() {
             log::warn!("ring window show failed: {e}");
         }
+        // Start the open animation AFTER the map: set before show(), the
+        // first frame would render at full opacity instead of fading in.
+        win.set_open(true);
     }
 
     pub fn close(self: &Rc<Self>) {

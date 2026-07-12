@@ -62,6 +62,14 @@ pub trait Compositor: Send {
         false
     }
 
+    /// Physical pixel size of the focused output, when the compositor can
+    /// tell us. Used to pre-size the overlay window BEFORE it maps, so the
+    /// first committed frame is already screen-sized (no flash of a small
+    /// window while the float/resize rules land).
+    fn output_size(&mut self) -> Option<(u32, u32)> {
+        None
+    }
+
     // ---- queries (synchronous snapshot; adapters may also push events) ----
     fn windows(&mut self) -> Vec<WindowInfo>;
     fn active_window(&mut self) -> Option<WindowInfo>;
