@@ -652,13 +652,13 @@ export component Editor {
             // ------------------------------------------------- header: tabs
             HorizontalLayout {
                 Rectangle {
-                    width: Skin.s(148);
+                    width: Skin.s(218);
                     height: Skin.s(34);
                     border-radius: Skin.s(9);
                     background: Skin.tint(0.06);
                     HorizontalLayout {
                         padding: Skin.s(4);
-                        for tab-label[t-idx] in ["Apps", "Look"]: Rectangle {
+                        for tab-label[t-idx] in ["Apps", "Look", "Settings"]: Rectangle {
                             width: Skin.s(70);
                             border-radius: Skin.s(7);
                             background: root.cur-tab == t-idx ? Skin.accent : transparent;
@@ -1550,13 +1550,6 @@ export component Editor {
                                         root.set-setting("showDots", v ? "true" : "false");
                                     }
                                 }
-                                ToggleChip {
-                                    label: "Follow cursor";
-                                    on: root.follow-outside;
-                                    toggled(v) => {
-                                        root.set-setting("followOutside", v ? "true" : "false");
-                                    }
-                                }
                             }
                         }
 
@@ -1621,6 +1614,17 @@ export component Editor {
                             }
                         }
 
+                    }
+                }
+
+                // ================================================ SETTINGS tab
+                VScroll {
+                    visible: root.cur-tab == 2;
+
+                    VerticalLayout {
+                        padding: Skin.s(4);
+                        spacing: Skin.s(10);
+                        alignment: start;
 
                         Card {
                             title: "RING SHORTCUTS";
@@ -1716,6 +1720,27 @@ export component Editor {
                                         }
                                     }
                                 }
+                            }
+                        }
+
+                        Card {
+                            title: "BEHAVIOUR";
+                            HorizontalLayout {
+                                spacing: Skin.s(8);
+                                alignment: start;
+                                ToggleChip {
+                                    label: "Follow cursor";
+                                    on: root.follow-outside;
+                                    toggled(v) => {
+                                        root.set-setting("followOutside", v ? "true" : "false");
+                                    }
+                                }
+                            }
+                            Text {
+                                text: "The accent sector keeps tracking the mouse across the whole screen, not just over the ring.";
+                                color: Skin.fg-dim;
+                                font-size: Skin.s(10);
+                                wrap: word-wrap;
                             }
                         }
                     }
