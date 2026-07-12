@@ -568,6 +568,7 @@ impl Ui {
 
     pub fn open_ring(self: &Rc<Self>, mode: Mode) {
         self.hide_timer.stop();
+        let was_open = *self.open.borrow();
         *self.mode.borrow_mut() = mode;
         *self.arc.borrow_mut() = None;
         let win = match self.ring_handle() {
@@ -588,8 +589,12 @@ impl Ui {
             core.windows = ws;
             let active = core.comp.active_window();
             core.active = active;
-            // freeze the actions target NOW — the overlay steals focus next
-            core.actions_target = core.focused_app();
+            // Freeze the actions target on a FRESH open only — the overlay
+            // steals focus once mapped, so re-snapshotting while switching
+            // rings in-session would capture our own window (empty target).
+            if !was_open {
+                core.actions_target = core.focused_app();
+            }
         }
         self.rebuild_ring();
         *self.open.borrow_mut() = true;
