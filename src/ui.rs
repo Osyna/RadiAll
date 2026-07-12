@@ -17,6 +17,18 @@ use std::f32::consts::{PI, TAU};
 use std::rc::Rc;
 use std::time::Duration;
 
+/// Wire a Slint callback to the `Ui`: holds a `Weak`, upgrades per call, and
+/// silently no-ops once the Ui is torn down. `|ui, args…|` rebinds the
+/// upgraded `Rc` for the body — the single pattern every callback shares.
+macro_rules! wire {
+    ($w:ident.$setter:ident, $ui:ident, |$this:ident $(, $arg:ident)*| $body:block) => {{
+        let weak = Rc::downgrade($ui);
+        $w.$setter(move |$($arg),*| {
+            if let Some($this) = weak.upgrade() $body
+        });
+    }};
+}
+
 const CENTER_TIMER_MS: u64 = 2000; // hole hover -> settings button
 const LONG_PRESS_MS: u64 = 400; // press-and-hold -> action arc
 const CLOSE_FADE_MS: u64 = 230; // window stays mapped through fade-out
@@ -250,7 +262,10 @@ impl Ui {
 
     /// Live handle to the settings window, if open.
     fn settings_handle(&self) -> Option<SettingsWindow> {
-        self.settings_win.borrow().as_ref().map(|w| w.clone_strong())
+        self.settings_win
+            .borrow()
+            .as_ref()
+            .map(|w| w.clone_strong())
     }
 
     // ------------------------------------------------------ skin sync
@@ -275,7 +290,11 @@ impl Ui {
             &s.theme,
             Some(&s.bg),
             Some(&s.accent),
-            if s.seg_bg.is_empty() { None } else { Some(&s.seg_bg) },
+            if s.seg_bg.is_empty() {
+                None
+            } else {
+                Some(&s.seg_bg)
+            },
         );
         let light = band_lum(skin.bg) > 0.5;
         let cell_edge = skin.edge.a > 0;
@@ -283,7 +302,11 @@ impl Ui {
             (skin.edge, skin.s(skin.edge_width))
         } else {
             let a = if light { 0.10 } else { 0.14 };
-            let base = if light { Rgba::rgb(0, 0, 0) } else { Rgba::rgb(255, 255, 255) };
+            let base = if light {
+                Rgba::rgb(0, 0, 0)
+            } else {
+                Rgba::rgb(255, 255, 255)
+            };
             (base.with_alpha((a * s.wheel_opacity * 255.0) as u8), 1.0)
         };
         let adaptive = Adaptive {
@@ -445,7 +468,11 @@ impl Ui {
             // Apps/windows without a resolvable icon fall back to a monogram
             // letter (always renderable); nerd glyphs are kept for action
             // items only, where the pictogram carries meaning.
-            glyph: if is_action { e.glyph.clone().into() } else { SharedString::default() },
+            glyph: if is_action {
+                e.glyph.clone().into()
+            } else {
+                SharedString::default()
+            },
             monogram: e
                 .name
                 .chars()
@@ -455,7 +482,11 @@ impl Ui {
                 .into(),
             // window dots + selection are app/window concepts; actions all
             // inherit the app's wm_class and would show identical noise
-            dot_count: if is_action { 0 } else { win_count.min(6) as i32 },
+            dot_count: if is_action {
+                0
+            } else {
+                win_count.min(6) as i32
+            },
             sel_dot: if is_action { -1 } else { sel as i32 },
             is_action,
             tint,
@@ -470,7 +501,9 @@ impl Ui {
     }
 
     fn rebuild_ring(self: &Rc<Self>) {
-        let Some(win) = self.ring_handle() else { return };
+        let Some(win) = self.ring_handle() else {
+            return;
+        };
         let mode = *self.mode.borrow();
         let entries = self.core.borrow().ring_model(mode);
         let px = self.geo.borrow().icon_box.max(32.0) as u32;
@@ -503,7 +536,9 @@ impl Ui {
     }
 
     fn set_active_index(self: &Rc<Self>, idx: usize) {
-        let Some(win) = self.ring_handle() else { return };
+        let Some(win) = self.ring_handle() else {
+            return;
+        };
         let count = self.ring.borrow().len();
         let cur = win.get_sector_rotation();
         let delta = rotation_delta(cur, idx, count);
@@ -521,7 +556,9 @@ impl Ui {
     }
 
     fn update_center_label(self: &Rc<Self>, hovered: i32) {
-        let Some(win) = self.ring_handle() else { return };
+        let Some(win) = self.ring_handle() else {
+            return;
+        };
         let ring = self.ring.borrow();
         let core = self.core.borrow();
         let idx = if hovered >= 0 {
@@ -533,7 +570,11 @@ impl Ui {
             Some(e) => {
                 // actions share the app's wm_class: the "· title i/N" window
                 // suffix belongs to app/window slices only
-                let ws = if e.is_action() { Vec::new() } else { core.windows_for(e) };
+                let ws = if e.is_action() {
+                    Vec::new()
+                } else {
+                    core.windows_for(e)
+                };
                 if ws.len() > 1 {
                     let sel = core.selected_window_index(e).max(0) as usize;
                     let title = ws.get(sel).map(|w| w.title.as_str()).unwrap_or("");
@@ -629,7 +670,9 @@ impl Ui {
         *self.arc.borrow_mut() = None;
         self.center_timer.stop();
         self.long_press_timer.stop();
-        let Some(win) = self.ring_handle() else { return };
+        let Some(win) = self.ring_handle() else {
+            return;
+        };
         win.set_arc_open(false);
         win.set_open(false);
         win.set_show_settings_btn(false);
@@ -739,10 +782,7 @@ impl Ui {
         let sf = win.window().scale_factor();
         let (w, h) = (size.width as f32 / sf, size.height as f32 / sf);
         let geo = self.geo.borrow();
-        (
-            x - (w / 2.0 - geo.outer_r),
-            y - (h / 2.0 - geo.outer_r),
-        )
+        (x - (w / 2.0 - geo.outer_r), y - (h / 2.0 - geo.outer_r))
     }
 
     fn on_moved(self: &Rc<Self>, x: f32, y: f32) {
@@ -750,7 +790,9 @@ impl Ui {
         if self.arc.borrow().is_some() {
             return; // arc handles its own hover via its buttons
         }
-        let Some(win) = self.ring_handle() else { return };
+        let Some(win) = self.ring_handle() else {
+            return;
+        };
         let (lx, ly) = self.wheel_local(&win, x, y);
         let geo = *self.geo.borrow();
         let count = self.ring.borrow().len();
@@ -791,7 +833,9 @@ impl Ui {
 
     fn on_down(self: &Rc<Self>, x: f32, y: f32, _right: bool) {
         log::debug!("on_down {x},{y}");
-        let Some(win) = self.ring_handle() else { return };
+        let Some(win) = self.ring_handle() else {
+            return;
+        };
         let (lx, ly) = self.wheel_local(&win, x, y);
         let geo = *self.geo.borrow();
         let count = self.ring.borrow().len();
@@ -825,14 +869,19 @@ impl Ui {
             self.press.borrow_mut().arc_opened_by_press = false;
             return;
         }
-        let Some(win) = self.ring_handle() else { return };
+        let Some(win) = self.ring_handle() else {
+            return;
+        };
         let (lx, ly) = self.wheel_local(&win, x, y);
         let geo = *self.geo.borrow();
 
         // arc open: empty-arc click returns to the wheel; outside closes all
         if self.arc.borrow().is_some() {
             let d = geo.dist(lx, ly);
-            log::debug!("on_up with arc open: d={d} band_outer={}", geo.arc_band_outer);
+            log::debug!(
+                "on_up with arc open: d={d} band_outer={}",
+                geo.arc_band_outer
+            );
             if d <= geo.arc_band_outer {
                 *self.arc.borrow_mut() = None;
                 win.set_arc_open(false);
@@ -879,7 +928,9 @@ impl Ui {
         if *self.mode.borrow() == Mode::Actions {
             return;
         }
-        let Some(win) = self.ring_handle() else { return };
+        let Some(win) = self.ring_handle() else {
+            return;
+        };
         let (lx, ly) = self.wheel_local(&win, x, y);
         let geo = *self.geo.borrow();
         let count = self.ring.borrow().len();
@@ -932,7 +983,9 @@ impl Ui {
             icon: entry.icon.clone(),
             wm_class: entry.wm_class.clone(),
             window: None,
-            custom_actions: app_cfg.map(|a| a.custom_actions.clone()).unwrap_or_default(),
+            custom_actions: app_cfg
+                .map(|a| a.custom_actions.clone())
+                .unwrap_or_default(),
             action_ids: app_cfg.and_then(|a| a.action_ids.clone()),
         };
         let exec0 = app_cfg
@@ -950,12 +1003,13 @@ impl Ui {
                     }
                 }
             }
-            !(matches!(
-                t.kind,
-                crate::ring::ActionKind::Close
-                    | crate::ring::ActionKind::Float
-                    | crate::ring::ActionKind::Fullscreen
-            ) && !has_window)
+            has_window
+                || !matches!(
+                    t.kind,
+                    crate::ring::ActionKind::Close
+                        | crate::ring::ActionKind::Float
+                        | crate::ring::ActionKind::Fullscreen
+                )
         });
         if templates.is_empty() {
             templates.push(ActionTemplate {
@@ -983,7 +1037,9 @@ impl Ui {
                 }
             })
             .collect();
-        let Some(win) = self.ring_handle() else { return };
+        let Some(win) = self.ring_handle() else {
+            return;
+        };
         win.set_arc_items(ModelRc::new(VecModel::from(items)));
         win.set_arc_label(entry.name.clone().into());
         win.set_arc_open(true);
@@ -1016,44 +1072,27 @@ impl Ui {
     // ---------------------------------------------------------- wiring
 
     fn wire_ring(ui: &Rc<Self>, w: &RingWindow) {
-        let this = Rc::downgrade(ui);
-        w.on_pointer_moved(move |x, y| {
-            if let Some(ui) = this.upgrade() {
-                ui.on_moved(x, y);
-            }
+        wire!(w.on_pointer_moved, ui, |ui, x, y| {
+            ui.on_moved(x, y);
         });
-        let this = Rc::downgrade(ui);
-        w.on_pointer_down(move |x, y, right| {
-            if let Some(ui) = this.upgrade() {
-                ui.on_down(x, y, right);
-            }
+        wire!(w.on_pointer_down, ui, |ui, x, y, right| {
+            ui.on_down(x, y, right);
         });
-        let this = Rc::downgrade(ui);
-        w.on_pointer_up(move |x, y, right| {
-            if let Some(ui) = this.upgrade() {
-                ui.on_up(x, y, right);
-            }
+        wire!(w.on_pointer_up, ui, |ui, x, y, right| {
+            ui.on_up(x, y, right);
         });
-        let this = Rc::downgrade(ui);
-        w.on_scrolled(move |x, y, d| {
-            if let Some(ui) = this.upgrade() {
-                ui.on_scroll(x, y, d);
-            }
+        wire!(w.on_scrolled, ui, |ui, x, y, d| {
+            ui.on_scroll(x, y, d);
         });
-        let this = Rc::downgrade(ui);
-        w.on_esc_pressed(move || {
-            if let Some(ui) = this.upgrade() {
-                ui.on_esc();
-            }
+        wire!(w.on_esc_pressed, ui, |ui| {
+            ui.on_esc();
         });
-        let this = Rc::downgrade(ui);
-        w.on_arc_clicked(move |i| {
-            if let Some(ui) = this.upgrade() {
-                ui.on_arc_clicked(i);
-            }
+        wire!(w.on_arc_clicked, ui, |ui, i| {
+            ui.on_arc_clicked(i);
         });
         // logo for the center settings button
-        let logo = apps::load_icon_pixels_from_bytes(include_bytes!("../launcher/RadiAll.png"), 128);
+        let logo =
+            apps::load_icon_pixels_from_bytes(include_bytes!("../launcher/RadiAll.png"), 128);
         if let Some(buf) = logo {
             w.set_logo(slint::Image::from_rgba8(buf));
         }
@@ -1062,7 +1101,9 @@ impl Ui {
     // ------------------------------------------------------- editor
 
     fn refresh_preview(self: &Rc<Self>) {
-        let Some(sw) = self.settings_handle() else { return };
+        let Some(sw) = self.settings_handle() else {
+            return;
+        };
         let core = self.core.borrow();
         let entries = core.ring_model(Mode::Apps);
         let px = 40;
@@ -1142,7 +1183,9 @@ impl Ui {
     }
 
     fn refresh_editor_models(self: &Rc<Self>) {
-        let Some(sw) = self.settings_handle() else { return };
+        let Some(sw) = self.settings_handle() else {
+            return;
+        };
         let core = self.core.borrow();
         let apps_rows: Vec<AppRow> = core
             .apps
@@ -1193,14 +1236,21 @@ impl Ui {
         sw.set_sc_apps(s.shortcuts.apps.clone().into());
         sw.set_sc_windows(s.shortcuts.windows.clone().into());
         sw.set_sc_actions(s.shortcuts.actions.clone().into());
-        sw.set_keybind_backend(core.shortcuts.as_ref().map_or("none", |s| s.backend_name()).into());
+        sw.set_keybind_backend(
+            core.shortcuts
+                .as_ref()
+                .map_or("none", |s| s.backend_name())
+                .into(),
+        );
         sw.set_can_send_keys(core.comp.can_send_keys());
         drop(core);
         self.refresh_selected_actions();
     }
 
     fn refresh_selected_actions(self: &Rc<Self>) {
-        let Some(sw) = self.settings_handle() else { return };
+        let Some(sw) = self.settings_handle() else {
+            return;
+        };
         let sel = sw.get_selected_app();
         let core = self.core.borrow();
         let rows: Vec<ActionRow> = match core.apps.get(sel.max(0) as usize) {
@@ -1291,90 +1341,101 @@ impl Ui {
     }
 
     fn wire_editor(ui: &Rc<Self>, w: &SettingsWindow) {
-
         // picker filters run in Rust: re-push the models on every keystroke
-        let this = Rc::downgrade(ui);
-        w.on_pick_query(move |q| {
-            if let Some(ui) = this.upgrade() {
-                let rows = Self::installed_rows(&ui.core.borrow(), &q);
-                if let Some(sw) = ui.settings_handle() {
-                    sw.set_installed(ModelRc::new(VecModel::from(rows)));
-                }
+        wire!(w.on_pick_query, ui, |ui, q| {
+            let rows = Self::installed_rows(&ui.core.borrow(), &q);
+            if let Some(sw) = ui.settings_handle() {
+                sw.set_installed(ModelRc::new(VecModel::from(rows)));
             }
         });
-        let this = Rc::downgrade(ui);
-        w.on_icon_query(move |q| {
-            if let Some(ui) = this.upgrade() {
-                let rows = Self::icon_pick_rows(&ui.core.borrow(), &q);
-                if let Some(sw) = ui.settings_handle() {
-                    sw.set_icon_picks(ModelRc::new(VecModel::from(rows)));
-                }
+        wire!(w.on_icon_query, ui, |ui, q| {
+            let rows = Self::icon_pick_rows(&ui.core.borrow(), &q);
+            if let Some(sw) = ui.settings_handle() {
+                sw.set_icon_picks(ModelRc::new(VecModel::from(rows)));
             }
         });
 
         // color picker: seed HSV from the target's current hex, then route
         // live picks back through the same paths the swatches use
-        let this = Rc::downgrade(ui);
-        w.on_open_picker(move |target, current| {
-            if let Some(ui) = this.upgrade() {
-                let Some(sw) = ui.settings_handle() else { return };
-                let seed = Rgba::parse(&current).unwrap_or(Rgba::rgb(0xe4, 0x48, 0x54));
-                let (h, s, v, a) = seed.to_hsv();
-                sw.set_picker_h(h);
-                sw.set_picker_s(s);
-                sw.set_picker_v(v);
-                sw.set_picker_a(a);
-                sw.set_picker_for(target);
-            }
+        wire!(w.on_open_picker, ui, |ui, target, current| {
+            let Some(sw) = ui.settings_handle() else {
+                return;
+            };
+            let seed = Rgba::parse(&current).unwrap_or(Rgba::rgb(0xe4, 0x48, 0x54));
+            let (h, s, v, a) = seed.to_hsv();
+            sw.set_picker_h(h);
+            sw.set_picker_s(s);
+            sw.set_picker_v(v);
+            sw.set_picker_a(a);
+            sw.set_picker_for(target);
         });
-        let this = Rc::downgrade(ui);
-        w.on_color_picked(move |target, h, s, v, a| {
-            if let Some(ui) = this.upgrade() {
-                let Some(sw) = ui.settings_handle() else { return };
-                let hex: SharedString = Rgba::from_hsv(h, s, v, a).to_hex().into();
-                if let Some(idx) = target.strip_prefix("app:") {
-                    if let Ok(i) = idx.parse::<i32>() {
-                        sw.invoke_set_app_field(i, "color".into(), hex);
-                    }
-                } else if let Some(id) = target.strip_prefix("act:") {
-                    sw.invoke_set_custom_field(id.into(), "color".into(), hex);
-                } else {
-                    sw.invoke_set_setting(target, hex);
+        wire!(w.on_color_picked, ui, |ui, target, h, s, v, a| {
+            let Some(sw) = ui.settings_handle() else {
+                return;
+            };
+            let hex: SharedString = Rgba::from_hsv(h, s, v, a).to_hex().into();
+            if let Some(idx) = target.strip_prefix("app:") {
+                if let Ok(i) = idx.parse::<i32>() {
+                    sw.invoke_set_app_field(i, "color".into(), hex);
                 }
+            } else if let Some(id) = target.strip_prefix("act:") {
+                sw.invoke_set_custom_field(id.into(), "color".into(), hex);
+            } else {
+                sw.invoke_set_setting(target, hex);
             }
         });
 
         // icon picker selection: same target scheme as the color picker
-        let this = Rc::downgrade(ui);
-        w.on_icon_picked(move |target, value| {
-            if let Some(ui) = this.upgrade() {
-                let Some(sw) = ui.settings_handle() else { return };
-                if let Some(idx) = target.strip_prefix("app:") {
-                    if let Ok(i) = idx.parse::<i32>() {
-                        sw.invoke_set_app_field(i, "icon".into(), value);
-                    }
-                } else if let Some(id) = target.strip_prefix("act:") {
-                    sw.invoke_set_custom_field(id.into(), "icon".into(), value);
+        wire!(w.on_icon_picked, ui, |ui, target, value| {
+            let Some(sw) = ui.settings_handle() else {
+                return;
+            };
+            if let Some(idx) = target.strip_prefix("app:") {
+                if let Ok(i) = idx.parse::<i32>() {
+                    sw.invoke_set_app_field(i, "icon".into(), value);
                 }
-                // the icon on the app list refreshes with the models
-                ui.refresh_editor_models();
+            } else if let Some(id) = target.strip_prefix("act:") {
+                sw.invoke_set_custom_field(id.into(), "icon".into(), value);
             }
+            // the icon on the app list refreshes with the models
+            ui.refresh_editor_models();
         });
 
-        let this = Rc::downgrade(ui);
-        w.on_select_app(move |i| {
-            if let Some(ui) = this.upgrade() {
-                ui.set_selected_app(i);
-                ui.refresh_selected_actions();
-            }
+        wire!(w.on_select_app, ui, |ui, i| {
+            ui.set_selected_app(i);
+            ui.refresh_selected_actions();
         });
-        let this = Rc::downgrade(ui);
-        w.on_add_app(move || {
-            if let Some(ui) = this.upgrade() {
+        wire!(w.on_add_app, ui, |ui| {
+            ui.core.borrow_mut().apps.push(AppEntry {
+                name: "New App".into(),
+                icon: "application-x-executable".into(),
+                exec: vec![String::new()],
+                ..Default::default()
+            });
+            ui.save_apps_now();
+            ui.refresh_editor_models();
+            ui.refresh_preview();
+        });
+        wire!(w.on_add_installed, ui, |ui, i| {
+            let entry = ui.core.borrow().index.installed().get(i as usize).cloned();
+            if let Some(d) = entry {
                 ui.core.borrow_mut().apps.push(AppEntry {
-                    name: "New App".into(),
-                    icon: "application-x-executable".into(),
-                    exec: vec![String::new()],
+                    name: d.name.clone(),
+                    icon: if d.icon.is_empty() {
+                        "application-x-executable".into()
+                    } else {
+                        d.icon.clone()
+                    },
+                    exec: if d.exec.is_empty() {
+                        vec![d.id.clone()]
+                    } else {
+                        d.exec.clone()
+                    },
+                    wm_class: if d.startup_wm_class.is_empty() {
+                        d.id.clone()
+                    } else {
+                        d.startup_wm_class.clone()
+                    },
                     ..Default::default()
                 });
                 ui.save_apps_now();
@@ -1382,313 +1443,242 @@ impl Ui {
                 ui.refresh_preview();
             }
         });
-        let this = Rc::downgrade(ui);
-        w.on_add_installed(move |i| {
-            if let Some(ui) = this.upgrade() {
-                let entry = ui.core.borrow().index.installed().get(i as usize).cloned();
-                if let Some(d) = entry {
-                    ui.core.borrow_mut().apps.push(AppEntry {
-                        name: d.name.clone(),
-                        icon: if d.icon.is_empty() {
-                            "application-x-executable".into()
-                        } else {
-                            d.icon.clone()
-                        },
-                        exec: if d.exec.is_empty() {
-                            vec![d.id.clone()]
-                        } else {
-                            d.exec.clone()
-                        },
-                        wm_class: if d.startup_wm_class.is_empty() {
-                            d.id.clone()
-                        } else {
-                            d.startup_wm_class.clone()
-                        },
-                        ..Default::default()
-                    });
-                    ui.save_apps_now();
-                    ui.refresh_editor_models();
-                    ui.refresh_preview();
-                }
+        wire!(w.on_remove_app, ui, |ui, i| {
+            let mut core = ui.core.borrow_mut();
+            if (i as usize) < core.apps.len() {
+                core.apps.remove(i as usize);
             }
+            drop(core);
+            ui.set_selected_app(-1);
+            ui.save_apps_now();
+            ui.refresh_editor_models();
+            ui.refresh_preview();
         });
-        let this = Rc::downgrade(ui);
-        w.on_remove_app(move |i| {
-            if let Some(ui) = this.upgrade() {
+        wire!(w.on_move_app, ui, |ui, i, dir| {
+            let mut core = ui.core.borrow_mut();
+            let j = i + dir;
+            if i >= 0 && j >= 0 && (i as usize) < core.apps.len() && (j as usize) < core.apps.len()
+            {
+                core.apps.swap(i as usize, j as usize);
+            }
+            drop(core);
+            ui.set_selected_app(i + dir);
+            ui.save_apps_now();
+            ui.refresh_editor_models();
+            ui.refresh_preview();
+        });
+        wire!(w.on_reorder_app, ui, |ui, from, to| {
+            {
                 let mut core = ui.core.borrow_mut();
-                if (i as usize) < core.apps.len() {
-                    core.apps.remove(i as usize);
+                let n = core.apps.len();
+                let (from, to) = (from as usize, to as usize);
+                if from < n && to < n && from != to {
+                    let app = core.apps.remove(from);
+                    core.apps.insert(to, app);
                 }
-                drop(core);
-                ui.set_selected_app(-1);
-                ui.save_apps_now();
-                ui.refresh_editor_models();
-                ui.refresh_preview();
             }
+            ui.set_selected_app(to);
+            ui.save_apps_now();
+            ui.refresh_editor_models();
+            ui.refresh_preview();
         });
-        let this = Rc::downgrade(ui);
-        w.on_move_app(move |i, dir| {
-            if let Some(ui) = this.upgrade() {
+        wire!(w.on_set_app_field, ui, |ui, i, field, value| {
+            {
                 let mut core = ui.core.borrow_mut();
-                let j = i + dir;
-                if i >= 0 && j >= 0 && (i as usize) < core.apps.len() && (j as usize) < core.apps.len()
-                {
-                    core.apps.swap(i as usize, j as usize);
-                }
-                drop(core);
-                ui.set_selected_app(i + dir);
-                ui.save_apps_now();
-                ui.refresh_editor_models();
-                ui.refresh_preview();
-            }
-        });
-        let this = Rc::downgrade(ui);
-        w.on_reorder_app(move |from, to| {
-            if let Some(ui) = this.upgrade() {
-                {
-                    let mut core = ui.core.borrow_mut();
-                    let n = core.apps.len();
-                    let (from, to) = (from as usize, to as usize);
-                    if from < n && to < n && from != to {
-                        let app = core.apps.remove(from);
-                        core.apps.insert(to, app);
+                if let Some(a) = core.apps.get_mut(i as usize) {
+                    let v = value.to_string();
+                    match field.as_str() {
+                        "name" => a.name = v,
+                        "icon" => a.icon = v,
+                        "exec" => a.exec = v.split_whitespace().map(str::to_owned).collect(),
+                        "wmClass" => a.wm_class = v,
+                        "color" => a.color = v,
+                        _ => {}
                     }
                 }
-                ui.set_selected_app(to);
-                ui.save_apps_now();
-                ui.refresh_editor_models();
-                ui.refresh_preview();
             }
+            ui.save_apps_debounced();
+            ui.refresh_preview();
         });
-        let this = Rc::downgrade(ui);
-        w.on_set_app_field(move |i, field, value| {
-            if let Some(ui) = this.upgrade() {
-                {
-                    let mut core = ui.core.borrow_mut();
-                    if let Some(a) = core.apps.get_mut(i as usize) {
-                        let v = value.to_string();
-                        match field.as_str() {
-                            "name" => a.name = v,
-                            "icon" => a.icon = v,
-                            "exec" => {
-                                a.exec = v.split_whitespace().map(str::to_owned).collect()
-                            }
-                            "wmClass" => a.wm_class = v,
-                            "color" => a.color = v,
-                            _ => {}
-                        }
-                    }
-                }
-                ui.save_apps_debounced();
-                ui.refresh_preview();
-            }
-        });
-        let this = Rc::downgrade(ui);
-        w.on_toggle_action(move |id, on| {
-            if let Some(ui) = this.upgrade() {
-                let sel = ui.selected_app();
-                {
-                    let mut core = ui.core.borrow_mut();
-                    // materialize the full id list on first toggle (spec §6)
-                    let all_ids: Vec<String> = {
-                        let app = match core.apps.get(sel.max(0) as usize) {
-                            Some(a) if sel >= 0 => a.clone(),
-                            _ => return,
-                        };
-                        let focused = FocusedApp {
-                            wm_class: app.wm_class.clone(),
-                            custom_actions: app.custom_actions.clone(),
-                            action_ids: None,
-                            ..Default::default()
-                        };
-                        let exec0 = app.exec.first().cloned().unwrap_or_default();
-                        core.action_templates(&focused, &exec0)
-                            .into_iter()
-                            .filter(|t| !matches!(t.kind, crate::ring::ActionKind::Keys(_)))
-                            .map(|t| t.id)
-                            .collect()
+        wire!(w.on_toggle_action, ui, |ui, id, on| {
+            let sel = ui.selected_app();
+            {
+                let mut core = ui.core.borrow_mut();
+                // materialize the full id list on first toggle (spec §6)
+                let all_ids: Vec<String> = {
+                    let app = match core.apps.get(sel.max(0) as usize) {
+                        Some(a) if sel >= 0 => a.clone(),
+                        _ => return,
                     };
-                    if let Some(app) = core.apps.get_mut(sel as usize) {
-                        let ids = app.action_ids.get_or_insert_with(|| all_ids.clone());
-                        let id = id.to_string();
-                        if on {
-                            if !ids.contains(&id) {
-                                ids.push(id);
-                            }
-                        } else {
-                            ids.retain(|x| x != &id);
+                    let focused = FocusedApp {
+                        wm_class: app.wm_class.clone(),
+                        custom_actions: app.custom_actions.clone(),
+                        action_ids: None,
+                        ..Default::default()
+                    };
+                    let exec0 = app.exec.first().cloned().unwrap_or_default();
+                    core.action_templates(&focused, &exec0)
+                        .into_iter()
+                        .filter(|t| !matches!(t.kind, crate::ring::ActionKind::Keys(_)))
+                        .map(|t| t.id)
+                        .collect()
+                };
+                if let Some(app) = core.apps.get_mut(sel as usize) {
+                    let ids = app.action_ids.get_or_insert_with(|| all_ids.clone());
+                    let id = id.to_string();
+                    if on {
+                        if !ids.contains(&id) {
+                            ids.push(id);
                         }
+                    } else {
+                        ids.retain(|x| x != &id);
                     }
                 }
-                ui.save_apps_now();
-                ui.refresh_selected_actions();
             }
+            ui.save_apps_now();
+            ui.refresh_selected_actions();
         });
-        let this = Rc::downgrade(ui);
-        w.on_add_custom_action(move || {
-            if let Some(ui) = this.upgrade() {
-                let sel = ui.selected_app();
+        wire!(w.on_add_custom_action, ui, |ui| {
+            let sel = ui.selected_app();
+            if let Some(app) = ui.core.borrow_mut().apps.get_mut(sel.max(0) as usize) {
+                if sel >= 0 {
+                    app.custom_actions.push(CustomAction::default());
+                }
+            }
+            ui.save_apps_now();
+            ui.refresh_selected_actions();
+        });
+        wire!(w.on_remove_custom_action, ui, |ui, id| {
+            let sel = ui.selected_app();
+            if let Some(k) = id.strip_prefix("c:").and_then(|k| k.parse::<usize>().ok()) {
+                if let Some(app) = ui.core.borrow_mut().apps.get_mut(sel.max(0) as usize) {
+                    if sel >= 0 && k < app.custom_actions.len() {
+                        app.custom_actions.remove(k);
+                    }
+                }
+            }
+            ui.save_apps_now();
+            ui.refresh_selected_actions();
+        });
+        wire!(w.on_set_custom_field, ui, |ui, id, field, value| {
+            let sel = ui.selected_app();
+            if let Some(k) = id.strip_prefix("c:").and_then(|k| k.parse::<usize>().ok()) {
                 if let Some(app) = ui.core.borrow_mut().apps.get_mut(sel.max(0) as usize) {
                     if sel >= 0 {
-                        app.custom_actions.push(CustomAction::default());
-                    }
-                }
-                ui.save_apps_now();
-                ui.refresh_selected_actions();
-            }
-        });
-        let this = Rc::downgrade(ui);
-        w.on_remove_custom_action(move |id| {
-            if let Some(ui) = this.upgrade() {
-                let sel = ui.selected_app();
-                if let Some(k) = id.strip_prefix("c:").and_then(|k| k.parse::<usize>().ok()) {
-                    if let Some(app) = ui.core.borrow_mut().apps.get_mut(sel.max(0) as usize) {
-                        if sel >= 0 && k < app.custom_actions.len() {
-                            app.custom_actions.remove(k);
-                        }
-                    }
-                }
-                ui.save_apps_now();
-                ui.refresh_selected_actions();
-            }
-        });
-        let this = Rc::downgrade(ui);
-        w.on_set_custom_field(move |id, field, value| {
-            if let Some(ui) = this.upgrade() {
-                let sel = ui.selected_app();
-                if let Some(k) = id.strip_prefix("c:").and_then(|k| k.parse::<usize>().ok()) {
-                    if let Some(app) = ui.core.borrow_mut().apps.get_mut(sel.max(0) as usize) {
-                        if sel >= 0 {
-                            if let Some(c) = app.custom_actions.get_mut(k) {
-                                let v = value.to_string();
-                                match field.as_str() {
-                                    "label" => c.label = v,
-                                    "shortcut" => c.shortcut = v,
-                                    "icon" => c.icon = v,
-                                    "color" => c.color = v,
-                                    _ => {}
-                                }
+                        if let Some(c) = app.custom_actions.get_mut(k) {
+                            let v = value.to_string();
+                            match field.as_str() {
+                                "label" => c.label = v,
+                                "shortcut" => c.shortcut = v,
+                                "icon" => c.icon = v,
+                                "color" => c.color = v,
+                                _ => {}
                             }
                         }
                     }
                 }
-                ui.save_apps_debounced();
-                ui.refresh_selected_actions();
             }
+            ui.save_apps_debounced();
+            ui.refresh_selected_actions();
         });
-        let this = Rc::downgrade(ui);
-        w.on_set_setting(move |key, value| {
-            if let Some(ui) = this.upgrade() {
-                let v = value.to_string();
-                {
-                    let mut core = ui.core.borrow_mut();
-                    let s = &mut core.settings;
-                    match key.as_str() {
-                        "accent" => s.accent = v,
-                        "bg" => s.bg = v,
-                        "iconSize" => s.icon_size = v.parse().unwrap_or(s.icon_size),
-                        "ringRadius" => s.ring_radius = v.parse().unwrap_or(s.ring_radius),
-                        "dim" => s.dim = v.parse().unwrap_or(s.dim),
-                        "wheelOpacity" => s.wheel_opacity = v.parse().unwrap_or(s.wheel_opacity),
-                        "sectorRadius" => s.sector_radius = v.parse().unwrap_or(s.sector_radius),
-                        "segRadius" => s.seg_radius = v.parse().unwrap_or(s.seg_radius),
-                        "sectionInset" => s.section_inset = v.parse().unwrap_or(s.section_inset),
-                        "segGap" => s.seg_gap = v.parse().unwrap_or(s.seg_gap),
-                        "segBg" => s.seg_bg = v,
-                        "holeSize" => s.hole_size = v.parse().unwrap_or(s.hole_size),
-                        "showLabels" => s.show_labels = v == "true",
-                        "showDots" => s.show_dots = v == "true",
-                        "followOutside" => s.follow_outside = v == "true",
-                        "theme" => s.theme = v,
-                        "shortcutsEnabled" => s.shortcuts_enabled = v == "true",
-                        "persistBinds" => s.persist_binds = v == "true",
-                        _ => log::warn!("set-setting: unknown key {key}"),
-                    }
-                }
-                ui.save_settings_debounced();
-                if matches!(key.as_str(), "shortcutsEnabled" | "persistBinds") {
-                    let core = ui.core.borrow();
-                    if let Some(sc) = &core.shortcuts {
-                        sc.apply(&core.settings);
-                    }
-                }
-                ui.sync_skin();
-                ui.sync_geometry();
-                ui.refresh_editor_models();
-                ui.refresh_preview();
-            }
-        });
-        let this = Rc::downgrade(ui);
-        w.on_set_shortcut(move |mode, combo| {
-            if let Some(ui) = this.upgrade() {
-                let old;
-                {
-                    let mut core = ui.core.borrow_mut();
-                    let slot = match mode.as_str() {
-                        "windows" => &mut core.settings.shortcuts.windows,
-                        "actions" => &mut core.settings.shortcuts.actions,
-                        _ => &mut core.settings.shortcuts.apps,
-                    };
-                    old = slot.clone();
-                    *slot = combo.to_string();
-                }
-                ui.save_settings_debounced();
-                let core = ui.core.borrow();
-                match &core.shortcuts {
-                    // hyprctl: precise unbind of the old combo, rebind the new
-                    Some(sc) if sc.kind() == shortcuts::ProviderKind::Hyprctl => {
-                        shortcuts::update_shortcut(&core.settings, true, &mode, &old);
-                    }
-                    // portal / X11: providers re-sync the full set
-                    Some(sc) => sc.apply(&core.settings),
-                    None => {}
-                }
-                drop(core);
-                ui.refresh_editor_models();
-            }
-        });
-        let this = Rc::downgrade(ui);
-        w.on_save_theme(move |name| {
-            if let Some(ui) = this.upgrade() {
-                // Snapshot the current effective skin (incl. live bg/accent)
-                let result = crate::theme::save_theme(&name, &ui.skin.borrow());
-                match result {
-                    Ok(clean) => {
-                        ui.core.borrow_mut().settings.theme = clean;
-                        config::save_settings(&ui.core.borrow().settings);
-                        ui.sync_all();
-                    }
-                    Err(e) => log::warn!("save theme: {e}"),
+        wire!(w.on_set_setting, ui, |ui, key, value| {
+            let v = value.to_string();
+            {
+                let mut core = ui.core.borrow_mut();
+                let s = &mut core.settings;
+                match key.as_str() {
+                    "accent" => s.accent = v,
+                    "bg" => s.bg = v,
+                    "iconSize" => s.icon_size = v.parse().unwrap_or(s.icon_size),
+                    "ringRadius" => s.ring_radius = v.parse().unwrap_or(s.ring_radius),
+                    "dim" => s.dim = v.parse().unwrap_or(s.dim),
+                    "wheelOpacity" => s.wheel_opacity = v.parse().unwrap_or(s.wheel_opacity),
+                    "sectorRadius" => s.sector_radius = v.parse().unwrap_or(s.sector_radius),
+                    "segRadius" => s.seg_radius = v.parse().unwrap_or(s.seg_radius),
+                    "sectionInset" => s.section_inset = v.parse().unwrap_or(s.section_inset),
+                    "segGap" => s.seg_gap = v.parse().unwrap_or(s.seg_gap),
+                    "segBg" => s.seg_bg = v,
+                    "holeSize" => s.hole_size = v.parse().unwrap_or(s.hole_size),
+                    "showLabels" => s.show_labels = v == "true",
+                    "showDots" => s.show_dots = v == "true",
+                    "followOutside" => s.follow_outside = v == "true",
+                    "theme" => s.theme = v,
+                    "shortcutsEnabled" => s.shortcuts_enabled = v == "true",
+                    "persistBinds" => s.persist_binds = v == "true",
+                    _ => log::warn!("set-setting: unknown key {key}"),
                 }
             }
-        });
-
-        let this = Rc::downgrade(ui);
-        w.on_reset_settings(move || {
-            if let Some(ui) = this.upgrade() {
-                ui.core.borrow_mut().settings = crate::config::Settings::default();
-                config::save_settings(&ui.core.borrow().settings);
+            ui.save_settings_debounced();
+            if matches!(key.as_str(), "shortcutsEnabled" | "persistBinds") {
                 let core = ui.core.borrow();
                 if let Some(sc) = &core.shortcuts {
                     sc.apply(&core.settings);
                 }
-                drop(core);
-                ui.sync_all();
+            }
+            ui.sync_skin();
+            ui.sync_geometry();
+            ui.refresh_editor_models();
+            ui.refresh_preview();
+        });
+        wire!(w.on_set_shortcut, ui, |ui, mode, combo| {
+            let old;
+            {
+                let mut core = ui.core.borrow_mut();
+                let slot = match mode.as_str() {
+                    "windows" => &mut core.settings.shortcuts.windows,
+                    "actions" => &mut core.settings.shortcuts.actions,
+                    _ => &mut core.settings.shortcuts.apps,
+                };
+                old = slot.clone();
+                *slot = combo.to_string();
+            }
+            ui.save_settings_debounced();
+            let core = ui.core.borrow();
+            match &core.shortcuts {
+                // hyprctl: precise unbind of the old combo, rebind the new
+                Some(sc) if sc.kind() == shortcuts::ProviderKind::Hyprctl => {
+                    shortcuts::update_shortcut(&core.settings, true, &mode, &old);
+                }
+                // portal / X11: providers re-sync the full set
+                Some(sc) => sc.apply(&core.settings),
+                None => {}
+            }
+            drop(core);
+            ui.refresh_editor_models();
+        });
+        wire!(w.on_save_theme, ui, |ui, name| {
+            // Snapshot the current effective skin (incl. live bg/accent)
+            let result = crate::theme::save_theme(&name, &ui.skin.borrow());
+            match result {
+                Ok(clean) => {
+                    ui.core.borrow_mut().settings.theme = clean;
+                    config::save_settings(&ui.core.borrow().settings);
+                    ui.sync_all();
+                }
+                Err(e) => log::warn!("save theme: {e}"),
             }
         });
-        let this = Rc::downgrade(ui);
-        w.on_close_requested(move || {
-            if let Some(ui) = this.upgrade() {
-                ui.settings_save.stop();
-                config::save_settings(&ui.core.borrow().settings);
-                ui.save_apps_now();
-                if let Some(w) = ui.settings_win.borrow_mut().take() {
-                    w.hide().ok();
-                }
-                // Release the 24k-glyph index with the editor; reopening
-                // re-scans (~80 ms) — cheaper than 4 MB parked forever.
-                ui.core.borrow_mut().icons = None;
+
+        wire!(w.on_reset_settings, ui, |ui| {
+            ui.core.borrow_mut().settings = crate::config::Settings::default();
+            config::save_settings(&ui.core.borrow().settings);
+            let core = ui.core.borrow();
+            if let Some(sc) = &core.shortcuts {
+                sc.apply(&core.settings);
             }
+            drop(core);
+            ui.sync_all();
+        });
+        wire!(w.on_close_requested, ui, |ui| {
+            ui.settings_save.stop();
+            config::save_settings(&ui.core.borrow().settings);
+            ui.save_apps_now();
+            if let Some(w) = ui.settings_win.borrow_mut().take() {
+                w.hide().ok();
+            }
+            // Release the 24k-glyph index with the editor; reopening
+            // re-scans (~80 ms) — cheaper than 4 MB parked forever.
+            ui.core.borrow_mut().icons = None;
         });
     }
 }

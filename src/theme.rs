@@ -22,6 +22,8 @@ impl Rgba {
     pub const fn rgb(r: u8, g: u8, b: u8) -> Self {
         Self { r, g, b, a: 255 }
     }
+    // rgb/rgba is the natural pair — `new` would say less than `rgba` does.
+    #[allow(clippy::self_named_constructors)]
     pub const fn rgba(r: u8, g: u8, b: u8, a: u8) -> Self {
         Self { r, g, b, a }
     }
@@ -305,8 +307,9 @@ impl Skin {
             return;
         }
         let path = themes_dir().join(format!("{name}.json"));
-        match std::fs::read_to_string(&path) {
-            Ok(text) => match serde_json::from_str::<Value>(&text) {
+        // unknown theme -> built-in defaults
+        if let Ok(text) = std::fs::read_to_string(&path) {
+            match serde_json::from_str::<Value>(&text) {
                 Ok(json) => {
                     if let Some(parent) = json["extends"].as_str() {
                         self.apply_file(parent, depth + 1);
@@ -314,8 +317,7 @@ impl Skin {
                     self.apply(&json);
                 }
                 Err(e) => log::warn!("Theme: bad {name} — {e}"),
-            },
-            Err(_) => {} // unknown theme -> built-in defaults
+            }
         }
     }
 

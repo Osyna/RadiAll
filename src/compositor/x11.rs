@@ -85,7 +85,7 @@ impl X11Compositor {
                 EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY,
                 event,
             )
-            .and_then(|_| Ok(self.conn.flush()?));
+            .and_then(|_| self.conn.flush());
         if let Err(e) = sent {
             log::warn!("x11: ClientMessage send failed: {e}");
         }
@@ -123,7 +123,7 @@ impl Compositor for X11Compositor {
                     root,
                     &ChangeWindowAttributesAux::new().event_mask(EventMask::PROPERTY_CHANGE),
                 )
-                .and_then(|_| Ok(conn.flush()?));
+                .and_then(|_| conn.flush());
             if let Err(e) = select {
                 log::warn!("x11: PropertyChange select failed, no live updates: {e}");
                 return;
@@ -181,7 +181,7 @@ impl Compositor for X11Compositor {
         let raised = self
             .conn
             .configure_window(win, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE))
-            .and_then(|_| Ok(self.conn.flush()?));
+            .and_then(|_| self.conn.flush());
         if let Err(e) = raised {
             log::warn!("x11: raise failed: {e}");
         }

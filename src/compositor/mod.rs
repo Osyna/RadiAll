@@ -3,14 +3,13 @@
 //! rest of the app is generic (and Win32 / macOS adapters can slot in later).
 //!
 //! Linux coverage:
-//!   - Hyprland            -> IPC socket (full control incl. float/send-keys)
-//!   - wlroots compositors -> wlr-foreign-toplevel-management (sway, river,
-//!                            Wayfire, labwc, niri, ...)
-//!   - KDE Plasma Wayland  -> org_kde_plasma_window_management
-//!   - any X11 WM          -> EWMH (KDE-X11, XFCE, Cinnamon, MATE, i3,
-//!                            GNOME-X11, ...)
-//!   - GNOME Wayland       -> no window-listing protocol exists; the apps
-//!                            ring works fully, windows/actions rings degrade
+//! - Hyprland: IPC socket (full control incl. float/send-keys)
+//! - wlroots compositors: wlr-foreign-toplevel-management (sway, river,
+//!   Wayfire, labwc, niri, ...)
+//! - KDE Plasma Wayland: org_kde_plasma_window_management
+//! - any X11 WM: EWMH (KDE-X11, XFCE, Cinnamon, MATE, i3, GNOME-X11, ...)
+//! - GNOME Wayland: no window-listing protocol exists; the apps ring works
+//!   fully, windows/actions rings degrade
 //!
 //! Capabilities mirror the old Compositor.qml singleton:
 //!   - window listing / focus / close / fullscreen -> per-adapter
@@ -57,9 +56,6 @@ pub trait Compositor: Send {
         false
     }
     fn can_send_keys(&self) -> bool {
-        false
-    }
-    fn can_manage_keybinds(&self) -> bool {
         false
     }
 

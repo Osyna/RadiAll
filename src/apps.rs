@@ -373,8 +373,8 @@ pub fn icon_path(icon: &str) -> Option<PathBuf> {
 /// Icon pixel cache: scans repeat and decoding (especially SVG) is costly.
 /// Bounded: pathological picker sessions (searching across a 24k-glyph
 /// library) would otherwise grow it without limit.
-static ICON_CACHE: LazyLock<Mutex<HashMap<(String, u32), Option<SharedPixelBuffer<Rgba8Pixel>>>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+type IconCache = HashMap<(String, u32), Option<SharedPixelBuffer<Rgba8Pixel>>>;
+static ICON_CACHE: LazyLock<Mutex<IconCache>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// ~24px picker thumbs are ≈2.3 KB each; 2048 entries ≈ 5 MB worst case.
 const ICON_CACHE_CAP: usize = 2048;

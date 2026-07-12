@@ -120,10 +120,10 @@ fn run_daemon() -> Result<(), Box<dyn std::error::Error>> {
         for ev in rx {
             let _ = slint::invoke_from_event_loop(move || match ev {
                 compositor::CompositorEvent::Windows(ws) => {
-                    with_ui(|ui| ui.on_windows_changed(ws.clone()))
+                    with_ui(move |ui| ui.on_windows_changed(ws))
                 }
                 compositor::CompositorEvent::Active(a) => {
-                    with_ui(|ui| ui.on_active_changed(a.clone()))
+                    with_ui(move |ui| ui.on_active_changed(a))
                 }
                 compositor::CompositorEvent::ConfigReloaded => with_ui(|ui| {
                     let core = ui.core.borrow();

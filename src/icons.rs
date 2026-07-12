@@ -59,10 +59,6 @@ impl IconLib {
         self.entries.len()
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
-    }
-
     /// Substring search over icon names, prefix matches ranked first,
     /// capped at `cap` results. Empty query -> first `cap` entries.
     pub fn search(&self, query: &str, cap: usize) -> Vec<&IconEntry> {

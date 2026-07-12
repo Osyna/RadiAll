@@ -51,9 +51,6 @@ impl Compositor for HyprlandCompositor {
     fn can_send_keys(&self) -> bool {
         true
     }
-    fn can_manage_keybinds(&self) -> bool {
-        true
-    }
 
     /// See [`apply_overlay_rules`]; also re-run by the watch thread after
     /// `configreloaded` wipes keyword-applied rules.

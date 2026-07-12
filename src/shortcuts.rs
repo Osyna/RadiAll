@@ -345,11 +345,6 @@ impl Shortcuts {
             ProviderKind::None => "none",
         }
     }
-
-    /// Only the Hyprctl provider can persist binds to a config file.
-    pub fn persist_supported(&self) -> bool {
-        self.kind == ProviderKind::Hyprctl
-    }
 }
 
 #[cfg(test)]

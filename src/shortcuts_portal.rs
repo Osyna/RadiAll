@@ -58,7 +58,7 @@ pub fn available() -> bool {
 /// Host (non-sandboxed) apps have no .flatpak-info, so xdg-desktop-portal
 /// can't derive an app id — and GlobalShortcuts rejects the flow outright
 /// ("An app id is required"). The Registry host portal (xdg-desktop-portal
-/// >= 1.18) exists for exactly this and MUST be the first call on the
+/// 1.18+) exists for exactly this and MUST be the first call on the
 /// connection. Best-effort: sandboxed apps already carry an id and the
 /// portal refuses the call — that's fine.
 fn register_host_app(conn: &Connection) {
@@ -297,7 +297,7 @@ impl PortalProvider {
                     };
                     for msg in signals {
                         let parsed: zbus::Result<(OwnedObjectPath, String, u64, PortalResults)> =
-                            msg.body().deserialize().map_err(Into::into);
+                            msg.body().deserialize();
                         let Ok((sig_session, id, _ts, _opts)) = parsed else {
                             log::warn!("portal: malformed Activated signal ignored");
                             continue;

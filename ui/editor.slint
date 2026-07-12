@@ -1682,45 +1682,17 @@ export component Editor {
                                 }
                                 if root.shortcuts-enabled: HorizontalLayout {
                                     spacing: Skin.s(10);
-                                    VerticalLayout {
+                                    for mode[m] in ["Apps ring", "Windows ring", "Actions ring"]: VerticalLayout {
                                         spacing: Skin.s(4);
                                         Text {
-                                            text: "Apps ring";
+                                            text: mode;
                                             color: Skin.fg-dim;
                                             font-size: Skin.s(11);
                                         }
                                         ShortcutRecorder {
-                                            value: root.sc-apps;
+                                            value: m == 0 ? root.sc-apps : m == 1 ? root.sc-windows : root.sc-actions;
                                             captured(s) => {
-                                                root.set-shortcut("apps", s);
-                                            }
-                                        }
-                                    }
-                                    VerticalLayout {
-                                        spacing: Skin.s(4);
-                                        Text {
-                                            text: "Windows ring";
-                                            color: Skin.fg-dim;
-                                            font-size: Skin.s(11);
-                                        }
-                                        ShortcutRecorder {
-                                            value: root.sc-windows;
-                                            captured(s) => {
-                                                root.set-shortcut("windows", s);
-                                            }
-                                        }
-                                    }
-                                    VerticalLayout {
-                                        spacing: Skin.s(4);
-                                        Text {
-                                            text: "Actions ring";
-                                            color: Skin.fg-dim;
-                                            font-size: Skin.s(11);
-                                        }
-                                        ShortcutRecorder {
-                                            value: root.sc-actions;
-                                            captured(s) => {
-                                                root.set-shortcut("actions", s);
+                                                root.set-shortcut(m == 0 ? "apps" : m == 1 ? "windows" : "actions", s);
                                             }
                                         }
                                     }
