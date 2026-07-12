@@ -212,6 +212,13 @@ export component SettingsWindow inherits Window {
     callback close-requested <=> ed.close-requested;
     callback pick-query <=> ed.pick-query;
     callback icon-query <=> ed.icon-query;
+    callback open-picker <=> ed.open-picker;
+    callback color-picked <=> ed.color-picked;
+    in-out property <string> picker-for <=> ed.picker-for;
+    in-out property <float> picker-h <=> ed.picker-h;
+    in-out property <float> picker-s <=> ed.picker-s;
+    in-out property <float> picker-v <=> ed.picker-v;
+    in-out property <float> picker-a <=> ed.picker-a;
 
     HorizontalLayout {
         padding: 18px;

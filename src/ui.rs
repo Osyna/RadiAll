@@ -360,7 +360,16 @@ impl Ui {
         g.set_settings_btn(to_color(skin.settings_btn));
         // section geometry + inactive-section fill (design-scaled px; the
         // wheel applies its own ui-scale / pop factors)
-        let seg_bg = skin.seg_bg.unwrap_or(Rgba::rgba(0, 0, 0, 0));
+        // "bg" sentinel: sections take the band's exact pixel color, so only
+        // the gaps/inset reveal what's behind (theme pin still wins).
+        let seg_bg = skin.seg_bg.unwrap_or_else(|| {
+            if core.settings.seg_bg == "bg" {
+                skin.bg
+                    .with_alpha((core.settings.wheel_opacity * 255.0).round() as u8)
+            } else {
+                Rgba::rgba(0, 0, 0, 0)
+            }
+        });
         g.set_seg_bg(to_color(seg_bg));
         g.set_sector_radius(skin.s(core.settings.sector_radius));
         g.set_seg_radius(skin.s(core.settings.seg_radius));
@@ -1243,6 +1252,38 @@ impl Ui {
                 let rows = Self::icon_pick_rows(&ui.core.borrow(), &q);
                 if let Some(sw) = ui.settings_handle() {
                     sw.set_icon_picks(ModelRc::new(VecModel::from(rows)));
+                }
+            }
+        });
+
+        // color picker: seed HSV from the target's current hex, then route
+        // live picks back through the same paths the swatches use
+        let this = Rc::downgrade(ui);
+        w.on_open_picker(move |target, current| {
+            if let Some(ui) = this.upgrade() {
+                let Some(sw) = ui.settings_handle() else { return };
+                let seed = Rgba::parse(&current).unwrap_or(Rgba::rgb(0xe4, 0x48, 0x54));
+                let (h, s, v, a) = seed.to_hsv();
+                sw.set_picker_h(h);
+                sw.set_picker_s(s);
+                sw.set_picker_v(v);
+                sw.set_picker_a(a);
+                sw.set_picker_for(target);
+            }
+        });
+        let this = Rc::downgrade(ui);
+        w.on_color_picked(move |target, h, s, v, a| {
+            if let Some(ui) = this.upgrade() {
+                let Some(sw) = ui.settings_handle() else { return };
+                let hex: SharedString = Rgba::from_hsv(h, s, v, a).to_hex().into();
+                if let Some(idx) = target.strip_prefix("app:") {
+                    if let Ok(i) = idx.parse::<i32>() {
+                        sw.invoke_set_app_field(i, "color".into(), hex);
+                    }
+                } else if let Some(id) = target.strip_prefix("act:") {
+                    sw.invoke_set_custom_field(id.into(), "color".into(), hex);
+                } else {
+                    sw.invoke_set_setting(target, hex);
                 }
             }
         });

@@ -58,6 +58,47 @@ impl Rgba {
             format!("#{:02x}{:02x}{:02x}{:02x}", self.a, self.r, self.g, self.b)
         }
     }
+
+    /// HSV (h 0..360, s/v/a 0..1) -> Rgba. Used by the editor color picker.
+    pub fn from_hsv(h: f32, s: f32, v: f32, a: f32) -> Self {
+        let h = h.rem_euclid(360.0) / 60.0;
+        let c = v * s;
+        let x = c * (1.0 - (h.rem_euclid(2.0) - 1.0).abs());
+        let (r, g, b) = match h as u32 {
+            0 => (c, x, 0.0),
+            1 => (x, c, 0.0),
+            2 => (0.0, c, x),
+            3 => (0.0, x, c),
+            4 => (x, 0.0, c),
+            _ => (c, 0.0, x),
+        };
+        let m = v - c;
+        let q = |f: f32| ((f + m).clamp(0.0, 1.0) * 255.0).round() as u8;
+        Self::rgba(q(r), q(g), q(b), (a.clamp(0.0, 1.0) * 255.0).round() as u8)
+    }
+
+    /// Rgba -> HSV (h 0..360, s/v/a 0..1). Seeds the color picker.
+    pub fn to_hsv(self) -> (f32, f32, f32, f32) {
+        let (r, g, b) = (
+            self.r as f32 / 255.0,
+            self.g as f32 / 255.0,
+            self.b as f32 / 255.0,
+        );
+        let max = r.max(g).max(b);
+        let min = r.min(g).min(b);
+        let d = max - min;
+        let h = if d == 0.0 {
+            0.0
+        } else if max == r {
+            60.0 * ((g - b) / d).rem_euclid(6.0)
+        } else if max == g {
+            60.0 * ((b - r) / d + 2.0)
+        } else {
+            60.0 * ((r - g) / d + 4.0)
+        };
+        let s = if max == 0.0 { 0.0 } else { d / max };
+        (h, s, max, self.a as f32 / 255.0)
+    }
 }
 
 macro_rules! skin {
@@ -340,6 +381,33 @@ mod tests {
         assert_eq!(Rgba::rgba(20, 20, 24, 247).to_hex(), "#f7141418");
         let c = Rgba::parse("#f7141418").unwrap();
         assert_eq!(Rgba::parse(&c.to_hex()), Some(c));
+    }
+
+    #[test]
+    fn hsv_roundtrip() {
+        // primaries and greys survive the round trip
+        for c in [
+            Rgba::rgb(255, 0, 0),
+            Rgba::rgb(0, 255, 0),
+            Rgba::rgb(0, 0, 255),
+            Rgba::rgb(128, 128, 128),
+            Rgba::rgb(0xe4, 0x48, 0x54),
+            Rgba::rgba(0x22, 0xff, 0xff, 0x80),
+        ] {
+            let (h, s, v, a) = c.to_hsv();
+            let back = Rgba::from_hsv(h, s, v, a);
+            assert!(
+                (back.r as i32 - c.r as i32).abs() <= 1
+                    && (back.g as i32 - c.g as i32).abs() <= 1
+                    && (back.b as i32 - c.b as i32).abs() <= 1
+                    && back.a == c.a,
+                "{c:?} -> {back:?}"
+            );
+        }
+        // known values
+        assert_eq!(Rgba::from_hsv(0.0, 1.0, 1.0, 1.0), Rgba::rgb(255, 0, 0));
+        assert_eq!(Rgba::from_hsv(120.0, 1.0, 1.0, 1.0), Rgba::rgb(0, 255, 0));
+        assert_eq!(Rgba::from_hsv(360.0, 1.0, 1.0, 1.0), Rgba::rgb(255, 0, 0));
     }
 
     #[test]

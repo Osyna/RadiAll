@@ -54,7 +54,7 @@ QML-style hex, alpha FIRST: `#rgb`, `#rrggbb`, or `#AArrggbb`
 | `labelPillBg` | dark navy | Center label pill fill |
 | `edge` | transparent | Ring outline. Transparent = subtle auto edge; a solid color turns on **cell-shading** (bold cartoon border, see `matrix`) |
 | `edgeWidth` | `3` | Outline width in cell-shading mode |
-| `segBg` | *auto* | Inactive-section fill. Auto = the Look-tab picker, default invisible (band shows through) |
+| `segBg` | *auto* | Inactive-section fill. Auto = the Look-tab picker (`"bg"` there = same as the band, so only gaps cut through); default invisible |
 | `settingsBtn` | white | The center settings disc (behind the radish) |
 
 ### Sections (geometry)
@@ -67,6 +67,11 @@ Sections: **Active radius** (wedge corner rounding), **Inactive radius**,
 a fill (`segBg` or the Inactive-fill picker) plus a gap for a segmented
 wheel; set Wheel opacity to 0 % for a sections-only look. Cell-shading
 themes (`edge` set) keep their sharp-cornered style.
+
+Accent, Background, Inactive fill, per-app accents, and custom-action
+colors all get a full **HSV color picker** in the editor (the rainbow disc
+next to the swatches): hue, saturation/value square, and an alpha bar —
+changes apply live as you drag.
 
 ### Action arc
 

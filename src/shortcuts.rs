@@ -68,11 +68,23 @@ fn combo_for<'s>(settings: &'s Settings, mode: &str) -> &'s str {
     }
 }
 
+/// The command binds should exec. Prefer the running daemon's own binary so
+/// binds work even when RadiAll runs from a build tree and isn't on PATH;
+/// fall back to a bare `radiall` (PATH lookup) if current_exe is unreadable.
+fn exec_cmd() -> String {
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.to_str().map(str::to_owned))
+        .filter(|p| !p.contains(' ')) // hyprland exec args are not quoted
+        .unwrap_or_else(|| "radiall".into())
+}
+
 fn bind_line(mode: &str, combo: &Combo) -> String {
     format!(
-        "bind = {}, {}, exec, radiall --{}\n",
+        "bind = {}, {}, exec, {} --{}\n",
         hypr_mods(combo),
         combo.key,
+        exec_cmd(),
         mode
     )
 }
@@ -111,12 +123,23 @@ fn hyprctl(args: &[&str]) {
     }
 }
 
+/// Remove any bind on this combo. Hyprland stores "a" and "A" as distinct
+/// binds yet a keypress FIRES both — a user's own `SUPER, A` config bind
+/// plus our runtime `SUPER, a` would toggle the ring twice (open + instant
+/// close). Unbind every case variant so exactly one bind survives.
 fn unbind_live(combo: &Combo) {
-    hyprctl(&[
-        "keyword",
-        "unbind",
-        &format!("{},{}", hypr_mods(combo), combo.key),
-    ]);
+    let mods = hypr_mods(combo);
+    let mut variants = vec![combo.key.clone()];
+    let (lo, up) = (combo.key.to_lowercase(), combo.key.to_uppercase());
+    if lo != combo.key {
+        variants.push(lo);
+    }
+    if up != combo.key && up.chars().count() == combo.key.chars().count() {
+        variants.push(up);
+    }
+    for key in variants {
+        hyprctl(&["keyword", "unbind", &format!("{mods},{key}")]);
+    }
 }
 
 fn bind_live(mode: &str, combo: &Combo) {
@@ -124,9 +147,10 @@ fn bind_live(mode: &str, combo: &Combo) {
         "keyword",
         "bind",
         &format!(
-            "{},{},exec,radiall --{}",
+            "{},{},exec,{} --{}",
             hypr_mods(combo),
             combo.key,
+            exec_cmd(),
             mode
         ),
     ]);
@@ -211,6 +235,9 @@ mod tests {
     #[test]
     fn bind_lines_use_exec_cli() {
         let line = bind_line("apps", &parse("super+a"));
-        assert_eq!(line, "bind = SUPER, a, exec, radiall --apps\n");
+        assert!(line.starts_with("bind = SUPER, a, exec, "), "{line}");
+        assert!(line.ends_with(" --apps\n"), "{line}");
+        // the exec target is the running binary (or bare radiall fallback)
+        assert!(line.contains("radiall"), "{line}");
     }
 }

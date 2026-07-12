@@ -100,6 +100,23 @@ component PillBtn inherits Rectangle {
     }
 }
 
+// Small rainbow disc that opens the color picker for a target.
+component PickBtn inherits Rectangle {
+    callback clicked;
+    width: Skin.s(22);
+    height: Skin.s(22);
+    border-radius: self.width / 2;
+    background: @linear-gradient(135deg, #ff5555 0%, #ffb86c 25%, #50fa7b 50%, #8be9fd 75%, #bd93f9 100%);
+    border-width: pk-ta.has-hover ? 2px : 1px;
+    border-color: pk-ta.has-hover ? Skin.tint(0.9) : Skin.tint(0.35);
+    pk-ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
 component IconBtn inherits Rectangle {
     in property <string> glyph;
     in property <bool> enabled: true;
@@ -449,6 +466,17 @@ export component Editor {
     callback pick-query(string);
     callback icon-query(string);
 
+    // color picker: open-picker(target, current-hex) -> Rust seeds the HSV
+    // props below and sets picker-for; drags emit color-picked live.
+    // Targets: "accent" | "bg" | "segBg" | "app:<idx>" | "act:<action-id>".
+    callback open-picker(string, string);
+    callback color-picked(string, float, float, float, float);
+    in-out property <string> picker-for: "";
+    in-out property <float> picker-h: 0;
+    in-out property <float> picker-s: 1;
+    in-out property <float> picker-v: 1;
+    in-out property <float> picker-a: 1;
+
     // ---- private state ----
     private property <int> cur-tab: 0;             // 0 = Apps, 1 = Look
     private property <bool> picking: false;        // installed-app picker overlay
@@ -463,8 +491,10 @@ export component Editor {
     private property <[string]> accent-hexes: ["#e44854", "#0a84ff", "#5e5ce6", "#bf5af2", "#ff9f0a", "#30d158", "#64d2ff", "#ff2d55"];
     private property <[color]>  bg-cols: [#0b0b0d, #1c1c22, #2b2b30, #46464f, #c9d8ef, #dbe4f2, #e8e3d5, #ffffff];
     private property <[string]> bg-hexes: ["#0b0b0d", "#1c1c22", "#2b2b30", "#46464f", "#c9d8ef", "#dbe4f2", "#e8e3d5", "#ffffff"];
-    private property <[color]>  seg-cols: [#14ffffff, #26ffffff, #40ffffff, #14000000, #26000000, #40000000, #00000000];
-    private property <[string]> seg-hexes: ["#14ffffff", "#26ffffff", "#40ffffff", "#14000000", "#26000000", "#40000000", ""];
+    // NOTE slint hex literals are #RRGGBBAA (alpha LAST); the strings sent to
+    // Rust stay QML-style #AARRGGBB (alpha first).
+    private property <[color]>  seg-cols: [#ffffff14, #ffffff26, #ffffff40, #00000014, #00000026, #00000040];
+    private property <[string]> seg-hexes: ["#14ffffff", "#26ffffff", "#40ffffff", "#14000000", "#26000000", "#40000000"];
 
     min-width: Skin.s(480);
     horizontal-stretch: 1;
@@ -743,6 +773,11 @@ export component Editor {
                                                 }
                                             }
                                         }
+                                        PickBtn {
+                                            clicked => {
+                                                root.open-picker("app:\{root.selected-app}", root.apps[root.selected-app].color);
+                                            }
+                                        }
                                     }
                                 }
 
@@ -874,6 +909,11 @@ export component Editor {
                                                         clicked => {
                                                             root.set-custom-field(a.id, "color", chex);
                                                         }
+                                                    }
+                                                }
+                                                PickBtn {
+                                                    clicked => {
+                                                        root.open-picker("act:\{a.id}", a.color);
                                                     }
                                                 }
                                             }
@@ -1039,6 +1079,11 @@ export component Editor {
                                         }
                                     }
                                 }
+                                PickBtn {
+                                    clicked => {
+                                        root.open-picker("accent", root.accent-hex);
+                                    }
+                                }
                             }
                             Field {
                                 width: Skin.s(90);
@@ -1071,6 +1116,11 @@ export component Editor {
                                         clicked => {
                                             root.set-setting("bg", phex);
                                         }
+                                    }
+                                }
+                                PickBtn {
+                                    clicked => {
+                                        root.open-picker("bg", root.bg-hex);
                                     }
                                 }
                             }
@@ -1257,16 +1307,16 @@ export component Editor {
                             HorizontalLayout {
                                 spacing: Skin.s(6);
                                 alignment: start;
-                                for shex[k] in root.seg-hexes: Rectangle {
+                                // "invisible": band shows through (default)
+                                Rectangle {
                                     width: Skin.s(22);
                                     height: Skin.s(22);
                                     border-radius: self.width / 2;
-                                    background: root.seg-cols[k];
-                                    border-width: root.seg-bg-hex.to-lowercase() == shex ? 3px : 1px;
-                                    border-color: root.seg-bg-hex.to-lowercase() == shex
+                                    border-width: root.seg-bg-hex == "" ? 3px : 1px;
+                                    border-color: root.seg-bg-hex == ""
                                         ? Skin.tint(0.9)
                                         : Skin.tint(0.25);
-                                    if shex == "": Rectangle {
+                                    Rectangle {
                                         width: Skin.s(8);
                                         height: Skin.s(8);
                                         x: (parent.width - self.width) / 2;
@@ -1278,23 +1328,72 @@ export component Editor {
                                     TouchArea {
                                         mouse-cursor: pointer;
                                         clicked => {
+                                            root.set-setting("segBg", "");
+                                        }
+                                    }
+                                }
+                                // "same as background": sections take the band color,
+                                // so only gaps/inset reveal what's behind
+                                Rectangle {
+                                    width: Skin.s(22);
+                                    height: Skin.s(22);
+                                    border-radius: self.width / 2;
+                                    background: Skin.bg;
+                                    border-width: root.seg-bg-hex == "bg" ? 3px : 1px;
+                                    border-color: root.seg-bg-hex == "bg"
+                                        ? Skin.tint(0.9)
+                                        : Skin.tint(0.25);
+                                    Text {
+                                        width: 100%;
+                                        height: 100%;
+                                        text: "=";
+                                        color: Skin.on-band;
+                                        font-size: Skin.s(12);
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+                                    TouchArea {
+                                        mouse-cursor: pointer;
+                                        clicked => {
+                                            root.set-setting("segBg", "bg");
+                                        }
+                                    }
+                                }
+                                for shex[k] in root.seg-hexes: Rectangle {
+                                    width: Skin.s(22);
+                                    height: Skin.s(22);
+                                    border-radius: self.width / 2;
+                                    background: root.seg-cols[k];
+                                    border-width: root.seg-bg-hex.to-lowercase() == shex ? 3px : 1px;
+                                    border-color: root.seg-bg-hex.to-lowercase() == shex
+                                        ? Skin.tint(0.9)
+                                        : Skin.tint(0.25);
+                                    TouchArea {
+                                        mouse-cursor: pointer;
+                                        clicked => {
                                             root.set-setting("segBg", shex);
                                         }
                                     }
                                 }
+                                PickBtn {
+                                    clicked => {
+                                        root.open-picker("segBg", root.seg-bg-hex == "bg" ? "" : root.seg-bg-hex);
+                                    }
+                                }
                             }
                             Field {
+                                width: Skin.s(90);
                                 value: root.seg-bg-hex;
                                 placeholder: "#22ffffff";
                                 edited(t) => {
-                                    if (t == "" || t.character-count == 7 || t.character-count == 9) {
+                                    if (t == "" || t == "bg" || t.character-count == 7 || t.character-count == 9) {
                                         root.set-setting("segBg", t);
                                     }
                                 }
                             }
                         }
                         Text {
-                            text: "Inactive sections are invisible by default (the band shows through). Give them a fill — and a gap — for a segmented wheel; drop Wheel opacity to 0% for sections only.";
+                            text: "Invisible by default (the band shows through). '=' fills sections with the band colour so only gaps cut through; pick any colour for a segmented wheel — drop Wheel opacity to 0% for sections only.";
                             color: Skin.fg-dim;
                             font-size: Skin.s(11);
                             wrap: word-wrap;
@@ -1632,6 +1731,163 @@ export component Editor {
                         clicked => {
                             root.set-custom-field(root.picking-icon-for, "icon", entry.path);
                             root.picking-icon-for = "";
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ---------------------------------------------------- color picker popover
+    // HSV picker editing root.picker-h/s/v/a (seeded by Rust via open-picker);
+    // every change emits color-picked(target, h, s, v, a) -> applied LIVE.
+    if root.picker-for != "": Rectangle {
+        // scrim: click-away closes
+        background: #00000059;
+        TouchArea {
+            clicked => {
+                root.picker-for = "";
+            }
+        }
+
+        Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: Skin.s(320);
+            height: pick-col.preferred-height + Skin.s(32);
+            border-radius: Skin.s(16);
+            background: Skin.panel-bg.with-alpha(1.0);
+            border-width: 1px;
+            border-color: Skin.tint(0.14);
+            TouchArea { } // swallow clicks
+
+            pick-col := VerticalLayout {
+                x: Skin.s(16);
+                y: Skin.s(16);
+                width: parent.width - Skin.s(32);
+                spacing: Skin.s(10);
+
+                // saturation (x) / value (y) square over the pure hue
+                sv := Rectangle {
+                    height: Skin.s(160);
+                    border-radius: Skin.s(8);
+                    clip: true;
+                    background: Colors.hsv(root.picker-h, 1, 1);
+                    Rectangle {
+                        width: 100%;
+                        height: 100%;
+                        background: @linear-gradient(90deg, #ffffffff 0%, #ffffff00 100%);
+                    }
+                    Rectangle {
+                        width: 100%;
+                        height: 100%;
+                        background: @linear-gradient(180deg, #00000000 0%, #000000ff 100%);
+                    }
+                    // marker
+                    Rectangle {
+                        x: root.picker-s * parent.width - self.width / 2;
+                        y: (1 - root.picker-v) * parent.height - self.height / 2;
+                        width: Skin.s(14);
+                        height: Skin.s(14);
+                        border-radius: self.width / 2;
+                        border-width: 2px;
+                        border-color: white;
+                        drop-shadow-color: #00000080;
+                        drop-shadow-blur: 3px;
+                    }
+                    sv-ta := TouchArea {
+                        pointer-event(e) => {
+                            if (e.kind == PointerEventKind.down || e.kind == PointerEventKind.move) {
+                                if (self.pressed || e.kind == PointerEventKind.down) {
+                                    root.picker-s = Math.clamp(self.mouse-x / parent.width, 0, 1);
+                                    root.picker-v = Math.clamp(1 - self.mouse-y / parent.height, 0, 1);
+                                    root.color-picked(root.picker-for, root.picker-h, root.picker-s, root.picker-v, root.picker-a);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // hue bar
+                hue-bar := Rectangle {
+                    height: Skin.s(16);
+                    border-radius: Skin.s(8);
+                    background: @linear-gradient(90deg,
+                        #ff0000 0%, #ffff00 16.7%, #00ff00 33.3%, #00ffff 50%,
+                        #0000ff 66.7%, #ff00ff 83.3%, #ff0000 100%);
+                    Rectangle {
+                        x: root.picker-h / 360 * (parent.width - self.width);
+                        width: Skin.s(10);
+                        height: 100%;
+                        border-radius: Skin.s(5);
+                        border-width: 2px;
+                        border-color: white;
+                        background: Colors.hsv(root.picker-h, 1, 1);
+                    }
+                    TouchArea {
+                        pointer-event(e) => {
+                            if (self.pressed || e.kind == PointerEventKind.down) {
+                                root.picker-h = Math.clamp(self.mouse-x / parent.width, 0, 1) * 360;
+                                root.color-picked(root.picker-for, root.picker-h, root.picker-s, root.picker-v, root.picker-a);
+                            }
+                        }
+                    }
+                }
+
+                // alpha bar
+                alpha-bar := Rectangle {
+                    height: Skin.s(16);
+                    border-radius: Skin.s(8);
+                    background: Skin.tint(0.08);
+                    Rectangle {
+                        width: 100%;
+                        height: 100%;
+                        border-radius: parent.border-radius;
+                        background: @linear-gradient(90deg,
+                            Colors.hsv(root.picker-h, root.picker-s, root.picker-v).with-alpha(0.0) 0%,
+                            Colors.hsv(root.picker-h, root.picker-s, root.picker-v) 100%);
+                    }
+                    Rectangle {
+                        x: root.picker-a * (parent.width - self.width);
+                        width: Skin.s(10);
+                        height: 100%;
+                        border-radius: Skin.s(5);
+                        border-width: 2px;
+                        border-color: white;
+                    }
+                    TouchArea {
+                        pointer-event(e) => {
+                            if (self.pressed || e.kind == PointerEventKind.down) {
+                                root.picker-a = Math.clamp(self.mouse-x / parent.width, 0, 1);
+                                root.color-picked(root.picker-for, root.picker-h, root.picker-s, root.picker-v, root.picker-a);
+                            }
+                        }
+                    }
+                }
+
+                // preview + done
+                HorizontalLayout {
+                    spacing: Skin.s(10);
+                    Rectangle {
+                        width: Skin.s(32);
+                        height: Skin.s(32);
+                        border-radius: self.width / 2;
+                        background: Colors.hsv(root.picker-h, root.picker-s, root.picker-v).with-alpha(root.picker-a);
+                        border-width: 1px;
+                        border-color: Skin.tint(0.3);
+                    }
+                    Text {
+                        text: "Changes apply live.";
+                        color: Skin.fg-dim;
+                        font-size: Skin.s(12);
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+                    PillBtn {
+                        text: "Done";
+                        accent: true;
+                        clicked => {
+                            root.picker-for = "";
                         }
                     }
                 }
