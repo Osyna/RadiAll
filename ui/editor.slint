@@ -717,6 +717,7 @@ export component Editor {
     // ---- private state ----
     private property <int> cur-tab: 0;             // 0 = Apps, 1 = Look
     private property <bool> picking: false;        // installed-app picker overlay
+    private property <bool> confirm-reset: false;  // reset yes/no dialog
     private property <int> drag-from: -1;          // app-list drag & drop source
     private property <int> drag-to: -1;            // ...and current drop target
     private property <string> picking-icon-for: "";  // action id, "" = icon picker closed
@@ -1880,7 +1881,15 @@ export component Editor {
                 PillBtn {
                     text: "Reset settings";
                     clicked => {
-                        root.reset-settings();
+                        root.confirm-reset = true;
+                    }
+                }
+                PillBtn {
+                    text: "Global actions";
+                    clicked => {
+                        // the defaults panel = Apps tab with nothing selected
+                        root.cur-tab = 0;
+                        root.select-app(-1);
                     }
                 }
                 Rectangle { } // spacer
@@ -2236,6 +2245,62 @@ export component Editor {
                         accent: true;
                         clicked => {
                             root.picker-for = "";
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // -------------------------------------------------- reset confirm dialog
+    if root.confirm-reset: Rectangle {
+        border-radius: Skin.s(20);
+        background: #00000066;                 // scrim over the whole editor
+        TouchArea {
+            clicked => {
+                root.confirm-reset = false;    // click-away cancels
+            }
+        }
+        Rectangle {
+            width: Skin.s(300);
+            height: dlg.preferred-height + Skin.s(28);
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            border-radius: Skin.s(14);
+            background: Skin.panel-bg.with-alpha(1.0);
+            border-width: 1px;
+            border-color: Skin.tint(0.14);
+            TouchArea { } // swallow clicks inside the card
+            dlg := VerticalLayout {
+                padding: Skin.s(14);
+                spacing: Skin.s(10);
+                Text {
+                    text: "Reset all settings?";
+                    color: Skin.fg;
+                    font-size: Skin.s(14);
+                    font-weight: 600;
+                }
+                Text {
+                    text: "Colours, layout, geometry, shortcuts and global actions go back to the defaults. Your app list and saved themes are kept.";
+                    color: Skin.fg-dim;
+                    font-size: Skin.s(11);
+                    wrap: word-wrap;
+                }
+                HorizontalLayout {
+                    spacing: Skin.s(8);
+                    Rectangle { } // right-align the buttons
+                    PillBtn {
+                        text: "Cancel";
+                        clicked => {
+                            root.confirm-reset = false;
+                        }
+                    }
+                    PillBtn {
+                        text: "Reset";
+                        accent: true;
+                        clicked => {
+                            root.confirm-reset = false;
+                            root.reset-settings();
                         }
                     }
                 }
