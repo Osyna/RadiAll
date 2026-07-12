@@ -19,13 +19,18 @@ use ring::Mode;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-const BUNDLED_THEMES: [(&str, &str); 6] = [
+const BUNDLED_THEMES: [(&str, &str); 11] = [
     ("default", include_str!("../themes/default.json")),
     ("radiall", include_str!("../themes/radiall.json")),
     ("catppuccin", include_str!("../themes/catppuccin.json")),
     ("light", include_str!("../themes/light.json")),
     ("nord", include_str!("../themes/nord.json")),
     ("paper", include_str!("../themes/paper.json")),
+    ("dracula", include_str!("../themes/dracula.json")),
+    ("gruvbox", include_str!("../themes/gruvbox.json")),
+    ("tokyo-night", include_str!("../themes/tokyo-night.json")),
+    ("rose-pine", include_str!("../themes/rose-pine.json")),
+    ("matrix", include_str!("../themes/matrix.json")),
 ];
 
 thread_local! {

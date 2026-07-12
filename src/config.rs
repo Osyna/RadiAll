@@ -127,6 +127,9 @@ pub struct AppEntry {
     pub exec: Vec<String>,
     /// Window-class key for ALL window matching (case-insensitive).
     pub wm_class: String,
+    /// Optional per-app accent: hovered wedge + selected dot ("" = theme).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub color: String,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub custom_actions: Vec<CustomAction>,
     /// Whitelist of enabled action-template ids; None = all enabled.

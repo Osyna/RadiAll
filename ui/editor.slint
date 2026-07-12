@@ -28,6 +28,7 @@ component GroupHead inherits Text {
 component Field inherits Rectangle {
     in property <string> value;
     in property <string> placeholder;
+    out property <string> text-value: ti.text;   // live text (for read-on-click uses)
     callback edited(string);
 
     height: Skin.s(30);
@@ -431,6 +432,8 @@ export component Editor {
     callback set-shortcut(string, string);     // (mode, combo) combo lowercase '+'-joined
     callback reset-settings();
     callback close-requested();
+    // snapshot the current effective look into ~/.config/radiall/themes/<name>.json
+    callback save-theme(string);
 
     // Case-insensitive substring test for the installed-app filter (Slint has
     // no string `contains`). Rust wires this; the default handler disables
@@ -699,6 +702,40 @@ export component Editor {
                                         }
                                     }
                                 }
+                                SettingRow {
+                                    label: "Accent";
+                                    label-width: Skin.s(64);
+                                    HorizontalLayout {
+                                        spacing: Skin.s(6);
+                                        alignment: start;
+                                        // per-app wedge/dot color; "" = theme default
+                                        for chex[k] in root.action-hex: Rectangle {
+                                            width: Skin.s(22);
+                                            height: Skin.s(22);
+                                            border-radius: self.width / 2;
+                                            background: root.action-cols[k];
+                                            border-width: root.apps[root.selected-app].color.to-lowercase() == chex ? 2px : 1px;
+                                            border-color: root.apps[root.selected-app].color.to-lowercase() == chex
+                                                ? Skin.tint(0.9)
+                                                : Skin.tint(0.3);
+                                            if chex == "": Rectangle {
+                                                width: Skin.s(8);
+                                                height: Skin.s(8);
+                                                x: (parent.width - self.width) / 2;
+                                                y: (parent.height - self.height) / 2;
+                                                border-radius: self.width / 2;
+                                                border-width: 1px;
+                                                border-color: Skin.tint(0.5);
+                                            }
+                                            TouchArea {
+                                                mouse-cursor: pointer;
+                                                clicked => {
+                                                    root.set-app-field(root.selected-app, "color", chex);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
 
                                 Rectangle { height: Skin.s(4); }
                                 GroupHead { text: "ACTIONS"; }
@@ -933,6 +970,32 @@ export component Editor {
                         }
                         Text {
                             text: "Accent & background below apply to themes that don't set their own.";
+                            color: Skin.fg-dim;
+                            font-size: Skin.s(11);
+                            wrap: word-wrap;
+                        }
+
+                        // save the current look as a reusable theme
+                        HorizontalLayout {
+                            spacing: Skin.s(8);
+                            save-name := Field {
+                                value: "";
+                                placeholder: "my-theme";
+                                horizontal-stretch: 1;
+                                edited(v) => { }
+                            }
+                            PillBtn {
+                                text: "Save as theme";
+                                accent: true;
+                                clicked => {
+                                    if (save-name.text-value != "") {
+                                        root.save-theme(save-name.text-value);
+                                    }
+                                }
+                            }
+                        }
+                        Text {
+                            text: "Snapshots every color of the current look into a theme file you can share or hand-edit — edits to the file apply live.";
                             color: Skin.fg-dim;
                             font-size: Skin.s(11);
                             wrap: word-wrap;

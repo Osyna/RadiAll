@@ -51,7 +51,10 @@ export component Wheel {
         : root.sw / 2 + 3;
     private property <float> sro: (root.outer-r / 1px - root.sec-inset) * root.pop;
     private property <float> sri: (root.inner-r / 1px + root.sec-inset) * root.pop;
-    private property <color> sector-c: Skin.accent.mix(#ffffff, 0.96); // 4% toward white
+    // wedge fill: Rust resolves theme override / per-app color / auto mix
+    in property <color> wedge-color: Skin.sector;
+    private property <color> sector-c: root.wedge-color;
+    animate sector-c { duration: 120ms; }
 
     // wedge rotation: fixed top wedge rotated by the Rust-side shortest-path
     // accumulator; animated here (Path has no rotation-angle in Slint 1.17,
@@ -162,7 +165,7 @@ export component Wheel {
         x: root.outer-r - self.dia / 2;
         y: root.outer-r - self.dia / 2;
         border-radius: self.dia / 2;
-        background: white;
+        background: Skin.settings-btn;
         drop-shadow-color: #00000073;          // rgba(0,0,0,0.45)
         drop-shadow-blur: 16.8px * root.pop;   // shadowBlur 0.7 x blurMax 24
         drop-shadow-offset-y: 3px;
@@ -232,7 +235,7 @@ export component Wheel {
             width: parent.dot-d * self.ds;
             height: self.width;
             border-radius: self.width / 2;
-            background: d == item.sel-dot ? Skin.accent : Skin.dot;
+            background: d == item.sel-dot ? (item.wedge.alpha > 0 ? item.wedge : Skin.accent) : Skin.dot;
             x: (parent.width - parent.row-w) / 2
                 + d * (parent.dot-d + parent.dot-sp)
                 + (parent.dot-d - self.width) / 2;
@@ -259,7 +262,7 @@ export component Wheel {
             - self.height / 2;
         ptxt := Text {
             text: root.center-label;
-            color: Skin.fg-strong;
+            color: Skin.label-fg;
             font-family: Skin.font;
             font-size: Skin.s(14) * parent.k;
             font-weight: 500;
@@ -311,8 +314,8 @@ export component ActionArc {
             height: 100%;
             viewbox-width: self.width / 1px;
             viewbox-height: self.height / 1px;
-            fill: #141418f7;                 // rgba(20,20,24,0.97)
-            stroke: #ffffff14;               // rgba(255,255,255,0.08)
+            fill: Skin.arc-bg;
+            stroke: Skin.arc-stroke;
             stroke-width: 1px;
             MoveTo { x: root.cxf - root.fbo; y: root.cxf; }
             ArcTo { x: root.cxf + root.fbo; y: root.cxf; radius-x: root.fbo; radius-y: root.fbo; sweep: true; }
@@ -334,7 +337,7 @@ export component ActionArc {
             x: root.band-outer + root.arc-radius * root.apop * Math.cos(self.ang) - self.dia / 2;
             y: root.band-outer + root.arc-radius * root.apop * Math.sin(self.ang) - self.dia / 2;
             border-radius: self.dia / 2;
-            background: bta.has-hover && root.open ? Skin.accent : Skin.tint(0.10);
+            background: bta.has-hover && root.open ? Skin.arc-btn-hover : Skin.arc-btn;
             animate background { duration: 120ms; }
 
             bta := TouchArea {
@@ -384,7 +387,7 @@ export component ActionArc {
                 - self.height;
             atxt := Text {
                 text: root.hov >= 0 && root.hov < root.n ? root.items[root.hov].label : root.app-label;
-                color: Skin.fg-strong;
+                color: Skin.label-fg;
                 font-family: Skin.font;
                 font-size: Skin.s(13) * root.apop;
                 font-weight: 500;

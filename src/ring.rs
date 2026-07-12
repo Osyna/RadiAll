@@ -186,6 +186,7 @@ impl Core {
                     icon: a.icon.clone(),
                     glyph: G_APP.into(),
                     wm_class: a.wm_class.clone(),
+                    color: a.color.clone(),
                     app_index: Some(i),
                     ..Default::default()
                 })

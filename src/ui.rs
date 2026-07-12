@@ -151,6 +151,10 @@ pub struct Ui {
     hide_timer: slint::Timer,
     settings_save: slint::Timer,
     apps_save: slint::Timer,
+    /// Live theme reload: polls the active theme file's mtime (v1 parity
+    /// with Quickshell's FileView watchChanges).
+    theme_watch: slint::Timer,
+    theme_mtime: RefCell<Option<std::time::SystemTime>>,
     /// Keeps the tray component alive for the daemon's lifetime.
     tray: RefCell<Option<crate::Tray>>,
 }
@@ -162,6 +166,10 @@ struct Adaptive {
     dot: Rgba,
     rim: Rgba,
     rim_width: f32,
+    sector: Rgba,
+    label_fg: Rgba,
+    arc_btn: Rgba,
+    arc_btn_hover: Rgba,
 }
 
 impl Default for Adaptive {
@@ -171,8 +179,18 @@ impl Default for Adaptive {
             dot: Rgba::rgba(0, 0, 0, 140),
             rim: Rgba::rgba(0, 0, 0, 26),
             rim_width: 1.0,
+            sector: Rgba::rgb(0xe8, 0x55, 0x5f),
+            label_fg: Rgba::rgba(255, 255, 255, 242),
+            arc_btn: Rgba::rgba(255, 255, 255, 26),
+            arc_btn_hover: Rgba::rgb(0xe4, 0x48, 0x54),
         }
     }
+}
+
+/// The wedge's auto color: 4% toward white, opaque (v1 sectorC).
+fn mix_toward_white(c: Rgba) -> Rgba {
+    let mix = |v: u8| (v as f32 * 0.96 + 255.0 * 0.04).round() as u8;
+    Rgba::rgb(mix(c.r), mix(c.g), mix(c.b))
 }
 
 impl Ui {
@@ -194,10 +212,33 @@ impl Ui {
             hide_timer: slint::Timer::default(),
             settings_save: slint::Timer::default(),
             apps_save: slint::Timer::default(),
+            theme_watch: slint::Timer::default(),
+            theme_mtime: RefCell::new(None),
             tray: RefCell::new(None),
         });
         ui.sync_all();
+        *ui.theme_mtime.borrow_mut() = ui.active_theme_mtime();
+        let this = Rc::downgrade(&ui);
+        ui.theme_watch.start(
+            slint::TimerMode::Repeated,
+            Duration::from_millis(1000),
+            move || {
+                let Some(ui) = this.upgrade() else { return };
+                let now = ui.active_theme_mtime();
+                if now != *ui.theme_mtime.borrow() {
+                    *ui.theme_mtime.borrow_mut() = now;
+                    log::debug!("theme file changed, reloading");
+                    ui.sync_all();
+                }
+            },
+        );
         Ok(ui)
+    }
+
+    fn active_theme_mtime(&self) -> Option<std::time::SystemTime> {
+        let name = self.core.borrow().settings.theme.clone();
+        let path = crate::theme::themes_dir().join(format!("{name}.json"));
+        std::fs::metadata(path).and_then(|m| m.modified()).ok()
     }
 
     pub fn keep_tray(&self, tray: crate::Tray) {
@@ -219,6 +260,12 @@ impl Ui {
     pub fn sync_all(self: &Rc<Self>) {
         self.sync_skin();
         self.sync_geometry();
+        // the latched wedge color is pushed on hover; re-derive it so a
+        // live theme reload recolors the visible wedge too
+        if let Some(win) = self.ring_handle() {
+            let idx = win.get_active_index().max(0) as usize;
+            self.set_active_index(idx);
+        }
         self.refresh_editor_models();
         self.refresh_preview();
     }
@@ -237,18 +284,22 @@ impl Ui {
             (base.with_alpha((a * s.wheel_opacity * 255.0) as u8), 1.0)
         };
         let adaptive = Adaptive {
-            on_band: if light {
+            on_band: skin.on_band.unwrap_or(if light {
                 Rgba::rgb(0x19, 0x1a, 0x2e)
             } else {
                 Rgba::rgb(255, 255, 255)
-            },
-            dot: if light {
+            }),
+            dot: skin.dot.unwrap_or(if light {
                 Rgba::rgba(0, 0, 0, 140)
             } else {
                 Rgba::rgba(255, 255, 255, 217)
-            },
+            }),
             rim,
             rim_width: rim_w,
+            sector: skin.sector.unwrap_or_else(|| mix_toward_white(skin.accent)),
+            label_fg: skin.label_fg.unwrap_or(skin.fg_strong),
+            arc_btn: skin.arc_btn.unwrap_or(skin.fg.with_alpha(26)),
+            arc_btn_hover: skin.arc_btn_hover.unwrap_or(skin.accent),
         };
         drop(core);
         *self.skin.borrow_mut() = skin;
@@ -296,6 +347,14 @@ impl Ui {
         g.set_dot(to_color(a.dot));
         g.set_rim(to_color(a.rim));
         g.set_rim_width(a.rim_width);
+        g.set_sector(to_color(a.sector));
+        g.set_label_fg(to_color(a.label_fg));
+        g.set_arc_btn(to_color(a.arc_btn));
+        g.set_arc_btn_hover(to_color(a.arc_btn_hover));
+        g.set_backdrop(to_color(skin.backdrop));
+        g.set_arc_bg(to_color(skin.arc_bg));
+        g.set_arc_stroke(to_color(skin.arc_stroke));
+        g.set_settings_btn(to_color(skin.settings_btn));
     }
 
     fn sync_geometry(self: &Rc<Self>) {
@@ -379,6 +438,13 @@ impl Ui {
             sel_dot: sel as i32,
             is_action,
             tint,
+            wedge: if is_action {
+                slint::Color::from_argb_u8(0, 0, 0, 0)
+            } else {
+                Rgba::parse(&e.color)
+                    .map(to_color)
+                    .unwrap_or(slint::Color::from_argb_u8(0, 0, 0, 0))
+            },
         }
     }
 
@@ -422,6 +488,15 @@ impl Ui {
         let delta = rotation_delta(cur, idx, count);
         win.set_sector_rotation(cur + delta);
         win.set_active_index(idx as i32);
+        // wedge takes the app's own accent when it has one
+        let wedge = self
+            .ring
+            .borrow()
+            .get(idx)
+            .filter(|e| !e.is_action())
+            .and_then(|e| Rgba::parse(&e.color))
+            .unwrap_or(self.adaptive.borrow().sector);
+        win.set_wedge_color(to_color(wedge));
     }
 
     fn update_center_label(self: &Rc<Self>, hovered: i32) {
@@ -967,6 +1042,7 @@ impl Ui {
                     icon_name: a.icon.clone().into(),
                     exec: a.exec.join(" ").into(),
                     wm_class: a.wm_class.clone().into(),
+                    color: a.color.clone().into(),
                     icon,
                     has_icon,
                 }
@@ -1208,6 +1284,7 @@ impl Ui {
                                 a.exec = v.split_whitespace().map(str::to_owned).collect()
                             }
                             "wmClass" => a.wm_class = v,
+                            "color" => a.color = v,
                             _ => {}
                         }
                     }
@@ -1368,6 +1445,22 @@ impl Ui {
                 ui.refresh_editor_models();
             }
         });
+        let this = Rc::downgrade(ui);
+        w.on_save_theme(move |name| {
+            if let Some(ui) = this.upgrade() {
+                // Snapshot the current effective skin (incl. live bg/accent)
+                let result = crate::theme::save_theme(&name, &ui.skin.borrow());
+                match result {
+                    Ok(clean) => {
+                        ui.core.borrow_mut().settings.theme = clean;
+                        config::save_settings(&ui.core.borrow().settings);
+                        ui.sync_all();
+                    }
+                    Err(e) => log::warn!("save theme: {e}"),
+                }
+            }
+        });
+
         let this = Rc::downgrade(ui);
         w.on_reset_settings(move || {
             if let Some(ui) = this.upgrade() {

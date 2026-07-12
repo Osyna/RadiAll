@@ -44,7 +44,8 @@ All of it is set up from inside the launcher. No dotfile spelunking, no reload.
 - **Focus actions** — close / float / fullscreen, the app's own `.desktop` actions, plus custom key-combo shortcuts sent straight to that window.
 - **Long-press** an app in the Apps ring and its action arc opens right where it sits.
 - **Follow-cursor mode** — the accent sector tracks your mouse across the whole screen, not just on the ring.
-- **Live theming** — colours, ring and icon size, dim, opacity, keybinds; change a value and the preview updates as you look at it. Themes are plain JSON.
+- **Theming that goes deep** — 11 bundled themes (catppuccin, nord, gruvbox, dracula, tokyo-night, rose-pine, a phosphor-green `matrix` cell-shade, …). Every surface is a JSON key: band, wedge, backdrop, label pill, action arc, dots, outline. Themes can `extends` each other, the active theme file **hot-reloads while the ring is open**, and "Save as theme" snapshots your current look from the settings UI. See [themes/README.md](themes/README.md).
+- **Per-app accents** — give an app its own colour and the hover wedge + window dots follow it.
 - **Icons that don't look broken** — RadiAll digs the right icon out of your `.desktop` files and icon theme; when an app genuinely ships none it draws a clean monogram instead of a missing-texture square.
 - **Tray icon** — open any ring or Settings from the system tray (StatusNotifierItem, built in — no helper process).
 

@@ -41,11 +41,20 @@ export global Skin {
     in-out property <float> wheel-opacity: 0.96;
     in-out property <bool> show-labels: true;
 
-    // adaptive: dark ink on light bands, white on dark (bandLum branch in Rust)
+    // adaptive / themable surfaces — resolved in Rust (theme override,
+    // else derived from bg/accent/fg) and pushed here as concrete colors
     in-out property <color> on-band: #191a2e;
     in-out property <color> dot: #0000008c;
     in-out property <color> rim: #0000001a;
     in-out property <float> rim-width: 1;
+    in-out property <color> sector: #e8555f;          // accent wedge fill
+    in-out property <color> label-fg: #fffffff2;      // pill text
+    in-out property <color> backdrop: black;          // dim layer (alpha = settings.dim)
+    in-out property <color> arc-bg: #f7141418;        // action-arc band
+    in-out property <color> arc-stroke: #ffffff14;    // action-arc outline
+    in-out property <color> arc-btn: #ffffff1a;       // arc button idle fill
+    in-out property <color> arc-btn-hover: #e44854;   // arc button hover fill
+    in-out property <color> settings-btn: white;      // center settings disc
 
     public pure function s(px: float) -> length {
         return Math.round(px * self.scale) * 1px;

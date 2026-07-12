@@ -1,24 +1,24 @@
 {
   "bg": "#dbe4f2",
   "accent": "#0a84ff",
-
   "glassBg": "#f2f4f6fa",
   "glassHover": "#14000000",
   "pillBg": "#1a000000",
   "pillHover": "#2e000000",
   "btnHover": "#14000000",
   "btnActive": "#20000000",
-
   "fg": "#e6000000",
   "fgStrong": "#ff0a0a0a",
   "fgDim": "#80000000",
-
   "yellow": "#e0a300",
   "red": "#e0352b",
   "green": "#28a745",
-
   "sep": "#1f000000",
-
   "panelBg": "#fcf5f6f8",
-  "labelPillBg": "#f01a1a1f"
+  "labelPillBg": "#f01a1a1f",
+  "labelFg": "#f2ffffff",
+  "backdrop": "#ffffff",
+  "arcBg": "#f7f5f6f8",
+  "arcStroke": "#26000000",
+  "dot": "#73000000"
 }

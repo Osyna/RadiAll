@@ -3,9 +3,19 @@
   "glassBg": "#d92e3440",
   "panelBg": "#fc2e3440",
   "labelPillBg": "#f53b4252",
-
   "accent": "#88c0d0",
   "yellow": "#ebcb8b",
   "red": "#bf616a",
-  "green": "#a3be8c"
+  "green": "#a3be8c",
+  "fg": "#f0eceff4",
+  "fgStrong": "#eceff4",
+  "fgDim": "#8ad8dee9",
+  "sep": "#26eceff4",
+  "pillBg": "#26eceff4",
+  "pillHover": "#40eceff4",
+  "labelFg": "#eceff4",
+  "backdrop": "#242933",
+  "arcBg": "#f7242933",
+  "arcStroke": "#3388c0d0",
+  "settingsBtn": "#eceff4"
 }

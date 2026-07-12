@@ -1,0 +1,41 @@
+{
+  "scale": 1.1,
+  "bg": "#041207",
+  "accent": "#00ff66",
+
+  "fg": "#cc00ff88",
+  "fgStrong": "#00ff88",
+  "fgDim": "#7300ff88",
+
+  "red": "#ff3b30",
+  "green": "#00ff66",
+  "yellow": "#ccff00",
+
+  "sep": "#2600ff66",
+
+  "edge": "#00ff66",
+  "edgeWidth": 2,
+
+  "sector": "#00521f",
+  "onBand": "#00ff66",
+  "dot": "#8800ff66",
+  "labelFg": "#00ff88",
+
+  "panelBg": "#fa020a04",
+  "labelPillBg": "#f0021207",
+
+  "backdrop": "#010502",
+  "arcBg": "#f5020a04",
+  "arcStroke": "#5900ff66",
+  "arcBtn": "#1a00ff66",
+  "arcBtnHover": "#00521f",
+  "settingsBtn": "#021207",
+
+  "glassBg": "#85020a04",
+  "pillBg": "#1a00ff66",
+  "pillHover": "#3300ff66",
+
+  "font": "JetBrainsMono Nerd Font",
+  "fontDisplay": "JetBrainsMono Nerd Font",
+  "monoFont": "JetBrainsMono Nerd Font"
+}

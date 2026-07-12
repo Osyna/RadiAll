@@ -11,8 +11,8 @@ export struct RingItem {
     sel-dot: int,         // highlighted dot index, -1 = none
     is-action: bool,      // action items get tinted symbolic icons
     tint: color,          // icon colorize; transparent = draw as-is
+    wedge: color,         // per-app accent (wedge + selected dot); transparent = theme default
 }
-
 export struct ArcItem {
     label: string,
     icon: image,
@@ -26,6 +26,7 @@ export struct AppRow {
     icon-name: string,    // raw configured value (name or abs path)
     exec: string,         // argv joined with spaces for editing
     wm-class: string,
+    color: string,        // per-app accent hex or ""
     icon: image,
     has-icon: bool,
 }

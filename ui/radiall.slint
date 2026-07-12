@@ -34,6 +34,7 @@ export component RingWindow inherits Window {
     in property <int> hovered-index: -1;
     in property <int> active-index: 0;
     in property <float> sector-rotation;
+    in property <color> wedge-color: Skin.sector;
     in property <string> center-label;
     in property <bool> show-settings-btn;
     in property <image> logo;
@@ -62,7 +63,7 @@ export component RingWindow inherits Window {
     Rectangle {
         width: 100%;
         height: 100%;
-        background: black;
+        background: Skin.backdrop;
         opacity: root.open ? root.dim : 0;
         animate opacity { duration: 160ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
     }
@@ -90,6 +91,7 @@ export component RingWindow inherits Window {
             hovered-index: root.hovered-index;
             active-index: root.active-index;
             sector-rotation: root.sector-rotation;
+            wedge-color: root.wedge-color;
             center-label: root.center-label;
             show-settings-btn: root.show-settings-btn;
             logo: root.logo;
@@ -201,6 +203,7 @@ export component SettingsWindow inherits Window {
     callback set-setting <=> ed.set-setting;
     callback set-shortcut <=> ed.set-shortcut;
     callback reset-settings <=> ed.reset-settings;
+    callback save-theme <=> ed.save-theme;
     callback close-requested <=> ed.close-requested;
     pure callback name-matches <=> ed.name-matches;
 
