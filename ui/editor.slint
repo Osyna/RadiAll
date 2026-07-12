@@ -286,6 +286,7 @@ component VScroll inherits Rectangle {
 // One-line compact slider row: small label, slim slider, value readout.
 component CompactSlider inherits HorizontalLayout {
     in property <string> label;
+    in property <length> label-w: Skin.s(100);
     in property <string> suffix: "px";
     in property <float> minimum;
     in property <float> maximum;
@@ -297,7 +298,7 @@ component CompactSlider inherits HorizontalLayout {
     spacing: Skin.s(10);
     height: Skin.s(26);
     Text {
-        width: Skin.s(100);
+        width: root.label-w;
         text: root.label;
         color: Skin.fg;
         font-size: Skin.s(12);
@@ -320,6 +321,21 @@ component CompactSlider inherits HorizontalLayout {
         font-size: Skin.s(11);
         vertical-alignment: center;
         horizontal-alignment: right;
+    }
+}
+
+// Grouped settings section: rounded faint card with a header.
+component Card inherits Rectangle {
+    in property <string> title;
+    border-radius: Skin.s(12);
+    background: Skin.tint(0.035);
+    border-width: 1px;
+    border-color: Skin.tint(0.07);
+    VerticalLayout {
+        padding: Skin.s(12);
+        spacing: Skin.s(8);
+        GroupHead { text: root.title; }
+        @children
     }
 }
 
@@ -665,6 +681,31 @@ export component Editor {
                     }
                 }
                 Rectangle { } // spacer
+                // close (same as Done: saves pending edits and hides)
+                Rectangle {
+                    width: Skin.s(34);
+                    height: Skin.s(34);
+                    border-radius: Skin.s(9);
+                    background: x-ta.has-hover ? Skin.red.with-alpha(0.18) : Skin.tint(0.06);
+                    border-width: 1px;
+                    border-color: x-ta.has-hover ? Skin.red : Skin.tint(0.10);
+                    animate background, border-color { duration: 120ms; }
+                    Text {
+                        width: 100%;
+                        height: 100%;
+                        text: "✕";
+                        color: x-ta.has-hover ? Skin.red : Skin.fg;
+                        font-size: Skin.s(14);
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    x-ta := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.close-requested();
+                        }
+                    }
+                }
             }
 
             // ------------------------------------------------------ content
@@ -1061,8 +1102,12 @@ export component Editor {
                         padding-right: Skin.s(12);
                         spacing: Skin.s(10);
 
-                        GroupHead { text: "THEME"; }
-                        theme-btn := Rectangle {
+                        Card {
+                            title: "THEME";
+                            HorizontalLayout {
+                                spacing: Skin.s(8);
+                                theme-btn := Rectangle {
+                            horizontal-stretch: 1;
                             height: Skin.s(32);
                             border-radius: Skin.s(8);
                             background: tb-ta.has-hover ? Skin.tint(0.12) : Skin.tint(0.06);
@@ -1144,430 +1189,449 @@ export component Editor {
                                 }
                             }
                         }
-                        Text {
-                            text: "Accent & background below apply to themes that don't set their own.";
-                            color: Skin.fg-dim;
-                            font-size: Skin.s(11);
-                            wrap: word-wrap;
-                        }
-
-                        // save the current look as a reusable theme
-                        HorizontalLayout {
-                            spacing: Skin.s(8);
-                            save-name := Field {
-                                value: "";
-                                placeholder: "my-theme";
-                                horizontal-stretch: 1;
-                                edited(v) => { }
-                            }
-                            PillBtn {
-                                text: "Save as theme";
-                                accent: true;
-                                clicked => {
-                                    if (save-name.text-value != "") {
-                                        root.save-theme(save-name.text-value);
-                                    }
+                                save-name := Field {
+                                    width: Skin.s(150);
+                                    value: "";
+                                    placeholder: "my-theme";
+                                    edited(v) => { }
                                 }
-                            }
-                        }
-                        Text {
-                            text: "Snapshots every color of the current look into a theme file you can share or hand-edit — edits to the file apply live.";
-                            color: Skin.fg-dim;
-                            font-size: Skin.s(11);
-                            wrap: word-wrap;
-                        }
-
-                        Rectangle { height: Skin.s(6); }
-                        GroupHead { text: "COLOURS"; }
-                        SettingRow {
-                            label: "Accent";
-                            label-width: Skin.s(100);
-                            HorizontalLayout {
-                                spacing: Skin.s(6);
-                                alignment: start;
-                                for phex[k] in root.accent-hexes: Rectangle {
-                                    width: Skin.s(22);
-                                    height: Skin.s(22);
-                                    border-radius: self.width / 2;
-                                    background: root.accent-cols[k];
-                                    border-width: root.accent-hex.to-lowercase() == phex ? 3px : 0;
-                                    border-color: Skin.tint(0.9);
-                                    TouchArea {
-                                        mouse-cursor: pointer;
-                                        clicked => {
-                                            root.set-setting("accent", phex);
-                                        }
-                                    }
-                                }
-                                PickBtn {
+                                PillBtn {
+                                    text: "Save as theme";
+                                    accent: true;
                                     clicked => {
-                                        root.open-picker("accent", root.accent-hex);
-                                    }
-                                }
-                            }
-                            Field {
-                                width: Skin.s(90);
-                                value: root.accent-hex;
-                                placeholder: "#rrggbb";
-                                edited(t) => {
-                                    if (t.character-count == 7) {
-                                        root.set-setting("accent", t.to-lowercase());
-                                    }
-                                }
-                            }
-                        }
-                        SettingRow {
-                            label: "Background";
-                            label-width: Skin.s(100);
-                            HorizontalLayout {
-                                spacing: Skin.s(6);
-                                alignment: start;
-                                for phex[k] in root.bg-hexes: Rectangle {
-                                    width: Skin.s(22);
-                                    height: Skin.s(22);
-                                    border-radius: self.width / 2;
-                                    background: root.bg-cols[k];
-                                    border-width: root.bg-hex.to-lowercase() == phex ? 3px : 1px;
-                                    border-color: root.bg-hex.to-lowercase() == phex
-                                        ? Skin.tint(0.9)
-                                        : Skin.tint(0.2);
-                                    TouchArea {
-                                        mouse-cursor: pointer;
-                                        clicked => {
-                                            root.set-setting("bg", phex);
+                                        if (save-name.text-value != "") {
+                                            root.save-theme(save-name.text-value);
                                         }
                                     }
                                 }
-                                PickBtn {
-                                    clicked => {
-                                        root.open-picker("bg", root.bg-hex);
-                                    }
-                                }
                             }
-                            Field {
-                                width: Skin.s(90);
-                                value: root.bg-hex;
-                                placeholder: "#rrggbb";
-                                edited(t) => {
-                                    if (t.character-count == 7) {
-                                        root.set-setting("bg", t.to-lowercase());
-                                    }
-                                }
-                            }
-                        }
-
-                        Rectangle { height: Skin.s(6); }
-                        GroupHead { text: "WHEEL"; }
-                        CompactSlider {
-                            label: "Icon size";
-                            minimum: 36;
-                            maximum: 80;
-                            value: root.icon-size;
-                            changed(v) => {
-                                root.set-setting("iconSize", "\{Math.round(v)}");
-                            }
-                        }
-                        CompactSlider {
-                            label: "Ring size";
-                            minimum: 110;
-                            maximum: 240;
-                            value: root.ring-radius;
-                            changed(v) => {
-                                root.set-setting("ringRadius", "\{Math.round(v)}");
-                            }
-                        }
-                        CompactSlider {
-                            label: "Hole size";
-                            minimum: 40;
-                            maximum: 130;
-                            value: root.hole-size;
-                            changed(v) => {
-                                root.set-setting("holeSize", "\{Math.round(v)}");
-                            }
-                        }
-                        CompactSlider {
-                            label: "Backdrop dim";
-                            suffix: "%";
-                            minimum: 0;
-                            maximum: 0.6;
-                            step: 0.01;
-                            display-mul: 100;
-                            value: root.dim;
-                            changed(v) => {
-                                root.set-setting("dim", "\{Math.round(v * 100) / 100}");
-                            }
-                        }
-                        CompactSlider {
-                            label: "Wheel opacity";
-                            suffix: "%";
-                            minimum: 0;
-                            maximum: 1;
-                            step: 0.01;
-                            display-mul: 100;
-                            value: root.wheel-opacity;
-                            changed(v) => {
-                                root.set-setting("wheelOpacity", "\{Math.round(v * 100) / 100}");
-                            }
-                        }
-                        // toggles: one compact chip row
-                        HorizontalLayout {
-                            spacing: Skin.s(8);
-                            alignment: start;
-                            ToggleChip {
-                                label: "Labels";
-                                on: root.show-labels;
-                                toggled(v) => {
-                                    root.set-setting("showLabels", v ? "true" : "false");
-                                }
-                            }
-                            ToggleChip {
-                                label: "Window dots";
-                                on: root.show-dots;
-                                toggled(v) => {
-                                    root.set-setting("showDots", v ? "true" : "false");
-                                }
-                            }
-                            ToggleChip {
-                                label: "Follow cursor";
-                                on: root.follow-outside;
-                                toggled(v) => {
-                                    root.set-setting("followOutside", v ? "true" : "false");
-                                }
-                            }
-                        }
-
-                        Rectangle { height: Skin.s(6); }
-                        GroupHead { text: "SECTIONS"; }
-                        CompactSlider {
-                            label: "Active radius";
-                            minimum: 0;
-                            maximum: 28;
-                            step: 0.5;
-                            value: root.sector-radius;
-                            changed(v) => {
-                                root.set-setting("sectorRadius", "\{Math.round(v * 2) / 2}");
-                            }
-                        }
-                        CompactSlider {
-                            label: "Inactive radius";
-                            minimum: 0;
-                            maximum: 28;
-                            step: 0.5;
-                            value: root.seg-radius;
-                            changed(v) => {
-                                root.set-setting("segRadius", "\{Math.round(v * 2) / 2}");
-                            }
-                        }
-                        CompactSlider {
-                            label: "Edge padding";
-                            minimum: 0;
-                            maximum: 20;
-                            step: 0.5;
-                            value: root.section-inset;
-                            changed(v) => {
-                                root.set-setting("sectionInset", "\{Math.round(v * 2) / 2}");
-                            }
-                        }
-                        CompactSlider {
-                            label: "Section gap";
-                            minimum: 0;
-                            maximum: 24;
-                            step: 0.5;
-                            value: root.seg-gap;
-                            changed(v) => {
-                                root.set-setting("segGap", "\{Math.round(v * 2) / 2}");
-                            }
-                        }
-                        SettingRow {
-                            label: "Inactive fill";
-                            label-width: Skin.s(100);
-                            HorizontalLayout {
-                                spacing: Skin.s(6);
-                                alignment: start;
-                                // "invisible": band shows through (default)
-                                Rectangle {
-                                    width: Skin.s(22);
-                                    height: Skin.s(22);
-                                    border-radius: self.width / 2;
-                                    border-width: root.seg-bg-hex == "" ? 3px : 1px;
-                                    border-color: root.seg-bg-hex == ""
-                                        ? Skin.tint(0.9)
-                                        : Skin.tint(0.25);
-                                    Rectangle {
-                                        width: Skin.s(8);
-                                        height: Skin.s(8);
-                                        x: (parent.width - self.width) / 2;
-                                        y: (parent.height - self.height) / 2;
-                                        border-radius: self.width / 2;
-                                        border-width: 1px;
-                                        border-color: Skin.tint(0.5);
-                                    }
-                                    TouchArea {
-                                        mouse-cursor: pointer;
-                                        clicked => {
-                                            root.set-setting("segBg", "");
-                                        }
-                                    }
-                                }
-                                // "same as background": sections take the band color,
-                                // so only gaps/inset reveal what's behind
-                                Rectangle {
-                                    width: Skin.s(22);
-                                    height: Skin.s(22);
-                                    border-radius: self.width / 2;
-                                    background: Skin.bg;
-                                    border-width: root.seg-bg-hex == "bg" ? 3px : 1px;
-                                    border-color: root.seg-bg-hex == "bg"
-                                        ? Skin.tint(0.9)
-                                        : Skin.tint(0.25);
-                                    Text {
-                                        width: 100%;
-                                        height: 100%;
-                                        text: "=";
-                                        color: Skin.on-band;
-                                        font-size: Skin.s(12);
-                                        horizontal-alignment: center;
-                                        vertical-alignment: center;
-                                    }
-                                    TouchArea {
-                                        mouse-cursor: pointer;
-                                        clicked => {
-                                            root.set-setting("segBg", "bg");
-                                        }
-                                    }
-                                }
-                                for shex[k] in root.seg-hexes: Rectangle {
-                                    width: Skin.s(22);
-                                    height: Skin.s(22);
-                                    border-radius: self.width / 2;
-                                    background: root.seg-cols[k];
-                                    border-width: root.seg-bg-hex.to-lowercase() == shex ? 3px : 1px;
-                                    border-color: root.seg-bg-hex.to-lowercase() == shex
-                                        ? Skin.tint(0.9)
-                                        : Skin.tint(0.25);
-                                    TouchArea {
-                                        mouse-cursor: pointer;
-                                        clicked => {
-                                            root.set-setting("segBg", shex);
-                                        }
-                                    }
-                                }
-                                PickBtn {
-                                    clicked => {
-                                        root.open-picker("segBg", root.seg-bg-hex == "bg" ? "" : root.seg-bg-hex);
-                                    }
-                                }
-                            }
-                            Field {
-                                width: Skin.s(90);
-                                value: root.seg-bg-hex;
-                                placeholder: "#22ffffff";
-                                edited(t) => {
-                                    if (t == "" || t == "bg" || t.character-count == 7 || t.character-count == 9) {
-                                        root.set-setting("segBg", t);
-                                    }
-                                }
-                            }
-                        }
-                        Text {
-                            text: "Invisible by default (the band shows through). '=' fills sections with the band colour so only gaps cut through; pick any colour for a segmented wheel — drop Wheel opacity to 0% for sections only.";
-                            color: Skin.fg-dim;
-                            font-size: Skin.s(11);
-                            wrap: word-wrap;
-                        }
-
-
-                        Rectangle { height: Skin.s(6); }
-                        GroupHead { text: "RING SHORTCUTS"; }
-
-                        if !root.can-manage-keybinds: VerticalLayout {
-                            spacing: Skin.s(6);
                             Text {
-                                text: "Your compositor has no global-shortcut API RadiAll can drive. Bind these commands in your compositor config instead — they reach the running instance:";
+                                text: "Accent & background apply to themes that don't set their own. \"Save as theme\" snapshots every colour of the current look — theme files hot-reload on edit.";
                                 color: Skin.fg-dim;
-                                font-size: Skin.s(12);
+                                font-size: Skin.s(10);
                                 wrap: word-wrap;
                             }
-                            Text {
-                                text: "radiall --apps\nradiall --windows\nradiall --actions";
-                                color: Skin.fg;
-                                font-family: Skin.mono-font;
-                                font-size: Skin.s(12);
-                            }
                         }
 
-                        if root.can-manage-keybinds: VerticalLayout {
-                            spacing: Skin.s(10);
+                        Card {
+                            title: "COLOURS";
                             SettingRow {
-                                label: "Enabled";
-                                label-width: Skin.s(150);
-                                Toggle {
-                                    on: root.shortcuts-enabled;
-                                    toggled(v) => {
-                                        root.set-setting("shortcutsEnabled", v ? "true" : "false");
+                                label: "Accent";
+                                label-width: Skin.s(84);
+                                HorizontalLayout {
+                                    spacing: Skin.s(6);
+                                    alignment: start;
+                                    for phex[k] in root.accent-hexes: Rectangle {
+                                        width: Skin.s(22);
+                                        height: Skin.s(22);
+                                        border-radius: self.width / 2;
+                                        background: root.accent-cols[k];
+                                        border-width: root.accent-hex.to-lowercase() == phex ? 3px : 0;
+                                        border-color: Skin.tint(0.9);
+                                        TouchArea {
+                                            mouse-cursor: pointer;
+                                            clicked => {
+                                                root.set-setting("accent", phex);
+                                            }
+                                        }
+                                    }
+                                    PickBtn {
+                                        clicked => {
+                                            root.open-picker("accent", root.accent-hex);
+                                        }
                                     }
                                 }
-                                Rectangle { }
+                                Field {
+                                    width: Skin.s(90);
+                                    value: root.accent-hex;
+                                    placeholder: "#rrggbb";
+                                    edited(t) => {
+                                        if (t.character-count == 7) {
+                                            root.set-setting("accent", t.to-lowercase());
+                                        }
+                                    }
+                                }
                             }
-                            if !root.shortcuts-enabled: Text {
-                                text: "Off — RadiAll grabs no keys.";
+                            SettingRow {
+                                label: "Background";
+                                label-width: Skin.s(84);
+                                HorizontalLayout {
+                                    spacing: Skin.s(6);
+                                    alignment: start;
+                                    for phex[k] in root.bg-hexes: Rectangle {
+                                        width: Skin.s(22);
+                                        height: Skin.s(22);
+                                        border-radius: self.width / 2;
+                                        background: root.bg-cols[k];
+                                        border-width: root.bg-hex.to-lowercase() == phex ? 3px : 1px;
+                                        border-color: root.bg-hex.to-lowercase() == phex
+                                            ? Skin.tint(0.9)
+                                            : Skin.tint(0.2);
+                                        TouchArea {
+                                            mouse-cursor: pointer;
+                                            clicked => {
+                                                root.set-setting("bg", phex);
+                                            }
+                                        }
+                                    }
+                                    PickBtn {
+                                        clicked => {
+                                            root.open-picker("bg", root.bg-hex);
+                                        }
+                                    }
+                                }
+                                Field {
+                                    width: Skin.s(90);
+                                    value: root.bg-hex;
+                                    placeholder: "#rrggbb";
+                                    edited(t) => {
+                                        if (t.character-count == 7) {
+                                            root.set-setting("bg", t.to-lowercase());
+                                        }
+                                    }
+                                }
+                            }
+                            SettingRow {
+                                label: "Inactive fill";
+                                label-width: Skin.s(84);
+                                HorizontalLayout {
+                                    spacing: Skin.s(6);
+                                    alignment: start;
+                                    // "invisible": band shows through (default)
+                                    Rectangle {
+                                        width: Skin.s(22);
+                                        height: Skin.s(22);
+                                        border-radius: self.width / 2;
+                                        border-width: root.seg-bg-hex == "" ? 3px : 1px;
+                                        border-color: root.seg-bg-hex == ""
+                                            ? Skin.tint(0.9)
+                                            : Skin.tint(0.25);
+                                        Rectangle {
+                                            width: Skin.s(8);
+                                            height: Skin.s(8);
+                                            x: (parent.width - self.width) / 2;
+                                            y: (parent.height - self.height) / 2;
+                                            border-radius: self.width / 2;
+                                            border-width: 1px;
+                                            border-color: Skin.tint(0.5);
+                                        }
+                                        TouchArea {
+                                            mouse-cursor: pointer;
+                                            clicked => {
+                                                root.set-setting("segBg", "");
+                                            }
+                                        }
+                                    }
+                                    // "=": same as the band colour, gaps cut through
+                                    Rectangle {
+                                        width: Skin.s(22);
+                                        height: Skin.s(22);
+                                        border-radius: self.width / 2;
+                                        background: Skin.bg;
+                                        border-width: root.seg-bg-hex == "bg" ? 3px : 1px;
+                                        border-color: root.seg-bg-hex == "bg"
+                                            ? Skin.tint(0.9)
+                                            : Skin.tint(0.25);
+                                        Text {
+                                            width: 100%;
+                                            height: 100%;
+                                            text: "=";
+                                            color: Skin.on-band;
+                                            font-size: Skin.s(12);
+                                            horizontal-alignment: center;
+                                            vertical-alignment: center;
+                                        }
+                                        TouchArea {
+                                            mouse-cursor: pointer;
+                                            clicked => {
+                                                root.set-setting("segBg", "bg");
+                                            }
+                                        }
+                                    }
+                                    for shex[k] in root.seg-hexes: Rectangle {
+                                        width: Skin.s(22);
+                                        height: Skin.s(22);
+                                        border-radius: self.width / 2;
+                                        background: root.seg-cols[k];
+                                        border-width: root.seg-bg-hex.to-lowercase() == shex ? 3px : 1px;
+                                        border-color: root.seg-bg-hex.to-lowercase() == shex
+                                            ? Skin.tint(0.9)
+                                            : Skin.tint(0.25);
+                                        TouchArea {
+                                            mouse-cursor: pointer;
+                                            clicked => {
+                                                root.set-setting("segBg", shex);
+                                            }
+                                        }
+                                    }
+                                    PickBtn {
+                                        clicked => {
+                                            root.open-picker("segBg", root.seg-bg-hex == "bg" ? "" : root.seg-bg-hex);
+                                        }
+                                    }
+                                }
+                                Field {
+                                    width: Skin.s(90);
+                                    value: root.seg-bg-hex;
+                                    placeholder: "#22ffffff";
+                                    edited(t) => {
+                                        if (t == "" || t == "bg" || t.character-count == 7 || t.character-count == 9) {
+                                            root.set-setting("segBg", t);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Card {
+                            title: "WHEEL";
+                            GridLayout {
+                                spacing: Skin.s(8);
+                                Row {
+                                    CompactSlider {
+                                        label: "Icon size";
+                                        label-w: Skin.s(84);
+                                        minimum: 36;
+                                        maximum: 80;
+                                        value: root.icon-size;
+                                        changed(v) => {
+                                            root.set-setting("iconSize", "\{Math.round(v)}");
+                                        }
+                                    }
+                                    CompactSlider {
+                                        label: "Ring size";
+                                        label-w: Skin.s(88);
+                                        minimum: 110;
+                                        maximum: 240;
+                                        value: root.ring-radius;
+                                        changed(v) => {
+                                            root.set-setting("ringRadius", "\{Math.round(v)}");
+                                        }
+                                    }
+                                }
+                                Row {
+                                    CompactSlider {
+                                        label: "Hole size";
+                                        label-w: Skin.s(84);
+                                        minimum: 40;
+                                        maximum: 130;
+                                        value: root.hole-size;
+                                        changed(v) => {
+                                            root.set-setting("holeSize", "\{Math.round(v)}");
+                                        }
+                                    }
+                                    CompactSlider {
+                                        label: "Backdrop dim";
+                                        label-w: Skin.s(88);
+                                        suffix: "%";
+                                        minimum: 0;
+                                        maximum: 0.6;
+                                        step: 0.01;
+                                        display-mul: 100;
+                                        value: root.dim;
+                                        changed(v) => {
+                                            root.set-setting("dim", "\{Math.round(v * 100) / 100}");
+                                        }
+                                    }
+                                }
+                                Row {
+                                    CompactSlider {
+                                        label: "Wheel opacity";
+                                        label-w: Skin.s(84);
+                                        suffix: "%";
+                                        minimum: 0;
+                                        maximum: 1;
+                                        step: 0.01;
+                                        display-mul: 100;
+                                        value: root.wheel-opacity;
+                                        changed(v) => {
+                                            root.set-setting("wheelOpacity", "\{Math.round(v * 100) / 100}");
+                                        }
+                                    }
+                                }
+                            }
+                            HorizontalLayout {
+                                spacing: Skin.s(8);
+                                alignment: start;
+                                ToggleChip {
+                                    label: "Labels";
+                                    on: root.show-labels;
+                                    toggled(v) => {
+                                        root.set-setting("showLabels", v ? "true" : "false");
+                                    }
+                                }
+                                ToggleChip {
+                                    label: "Window dots";
+                                    on: root.show-dots;
+                                    toggled(v) => {
+                                        root.set-setting("showDots", v ? "true" : "false");
+                                    }
+                                }
+                                ToggleChip {
+                                    label: "Follow cursor";
+                                    on: root.follow-outside;
+                                    toggled(v) => {
+                                        root.set-setting("followOutside", v ? "true" : "false");
+                                    }
+                                }
+                            }
+                        }
+
+                        Card {
+                            title: "SECTIONS";
+                            GridLayout {
+                                spacing: Skin.s(8);
+                                Row {
+                                    CompactSlider {
+                                        label: "Active radius";
+                                        label-w: Skin.s(84);
+                                        minimum: 0;
+                                        maximum: 28;
+                                        step: 0.5;
+                                        value: root.sector-radius;
+                                        changed(v) => {
+                                            root.set-setting("sectorRadius", "\{Math.round(v * 2) / 2}");
+                                        }
+                                    }
+                                    CompactSlider {
+                                        label: "Inactive radius";
+                                        label-w: Skin.s(88);
+                                        minimum: 0;
+                                        maximum: 28;
+                                        step: 0.5;
+                                        value: root.seg-radius;
+                                        changed(v) => {
+                                            root.set-setting("segRadius", "\{Math.round(v * 2) / 2}");
+                                        }
+                                    }
+                                }
+                                Row {
+                                    CompactSlider {
+                                        label: "Edge padding";
+                                        label-w: Skin.s(84);
+                                        minimum: 0;
+                                        maximum: 20;
+                                        step: 0.5;
+                                        value: root.section-inset;
+                                        changed(v) => {
+                                            root.set-setting("sectionInset", "\{Math.round(v * 2) / 2}");
+                                        }
+                                    }
+                                    CompactSlider {
+                                        label: "Section gap";
+                                        label-w: Skin.s(88);
+                                        minimum: 0;
+                                        maximum: 24;
+                                        step: 0.5;
+                                        value: root.seg-gap;
+                                        changed(v) => {
+                                            root.set-setting("segGap", "\{Math.round(v * 2) / 2}");
+                                        }
+                                    }
+                                }
+                            }
+                            Text {
+                                text: "Give inactive sections a fill (Colours above) plus a gap for a segmented wheel — Wheel opacity 0% keeps only the sections.";
                                 color: Skin.fg-dim;
-                                font-size: Skin.s(11);
+                                font-size: Skin.s(10);
                                 wrap: word-wrap;
                             }
-                            if root.shortcuts-enabled: VerticalLayout {
-                                spacing: Skin.s(10);
-                                SettingRow {
-                                    label: "Bind in Hyprland";
-                                    label-width: Skin.s(150);
-                                    Toggle {
+                        }
+
+
+                        Card {
+                            title: "RING SHORTCUTS";
+
+                            if !root.can-manage-keybinds: VerticalLayout {
+                                spacing: Skin.s(6);
+                                Text {
+                                    text: "Your compositor has no global-shortcut API RadiAll can drive. Bind these commands in your compositor config instead — they reach the running instance:";
+                                    color: Skin.fg-dim;
+                                    font-size: Skin.s(12);
+                                    wrap: word-wrap;
+                                }
+                                Text {
+                                    text: "radiall --apps\nradiall --windows\nradiall --actions";
+                                    color: Skin.fg;
+                                    font-family: Skin.mono-font;
+                                    font-size: Skin.s(12);
+                                }
+                            }
+
+                            if root.can-manage-keybinds: VerticalLayout {
+                                spacing: Skin.s(8);
+                                HorizontalLayout {
+                                    spacing: Skin.s(8);
+                                    alignment: start;
+                                    ToggleChip {
+                                        label: "Enabled";
+                                        on: root.shortcuts-enabled;
+                                        toggled(v) => {
+                                            root.set-setting("shortcutsEnabled", v ? "true" : "false");
+                                        }
+                                    }
+                                    if root.shortcuts-enabled: ToggleChip {
+                                        label: "Bind in Hyprland";
                                         on: root.persist-binds;
                                         toggled(v) => {
                                             root.set-setting("persistBinds", v ? "true" : "false");
                                         }
                                     }
-                                    Rectangle { }
                                 }
                                 Text {
-                                    text: root.persist-binds
-                                        ? "Keys are written to ~/.config/hypr/launcher-binds.conf and survive reloads."
-                                        : "Keys are applied live via hyprctl — your Hyprland config is left untouched.";
+                                    text: !root.shortcuts-enabled
+                                        ? "Off — RadiAll grabs no keys."
+                                        : root.persist-binds
+                                            ? "Keys are written to ~/.config/hypr/launcher-binds.conf and survive reloads."
+                                            : "Keys are applied live via hyprctl — your Hyprland config is left untouched.";
                                     color: Skin.fg-dim;
-                                    font-size: Skin.s(11);
+                                    font-size: Skin.s(10);
                                     wrap: word-wrap;
                                 }
-                                SettingRow {
-                                    label: "Apps ring";
-                                    label-width: Skin.s(110);
-                                    ShortcutRecorder {
-                                        value: root.sc-apps;
-                                        captured(s) => {
-                                            root.set-shortcut("apps", s);
+                                if root.shortcuts-enabled: HorizontalLayout {
+                                    spacing: Skin.s(10);
+                                    VerticalLayout {
+                                        spacing: Skin.s(4);
+                                        Text {
+                                            text: "Apps ring";
+                                            color: Skin.fg-dim;
+                                            font-size: Skin.s(11);
+                                        }
+                                        ShortcutRecorder {
+                                            value: root.sc-apps;
+                                            captured(s) => {
+                                                root.set-shortcut("apps", s);
+                                            }
                                         }
                                     }
-                                    Rectangle { }
-                                }
-                                SettingRow {
-                                    label: "Windows ring";
-                                    label-width: Skin.s(110);
-                                    ShortcutRecorder {
-                                        value: root.sc-windows;
-                                        captured(s) => {
-                                            root.set-shortcut("windows", s);
+                                    VerticalLayout {
+                                        spacing: Skin.s(4);
+                                        Text {
+                                            text: "Windows ring";
+                                            color: Skin.fg-dim;
+                                            font-size: Skin.s(11);
+                                        }
+                                        ShortcutRecorder {
+                                            value: root.sc-windows;
+                                            captured(s) => {
+                                                root.set-shortcut("windows", s);
+                                            }
                                         }
                                     }
-                                    Rectangle { }
-                                }
-                                SettingRow {
-                                    label: "Actions ring";
-                                    label-width: Skin.s(110);
-                                    ShortcutRecorder {
-                                        value: root.sc-actions;
-                                        captured(s) => {
-                                            root.set-shortcut("actions", s);
+                                    VerticalLayout {
+                                        spacing: Skin.s(4);
+                                        Text {
+                                            text: "Actions ring";
+                                            color: Skin.fg-dim;
+                                            font-size: Skin.s(11);
+                                        }
+                                        ShortcutRecorder {
+                                            value: root.sc-actions;
+                                            captured(s) => {
+                                                root.set-shortcut("actions", s);
+                                            }
                                         }
                                     }
-                                    Rectangle { }
                                 }
                             }
                         }
