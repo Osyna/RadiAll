@@ -1433,6 +1433,24 @@ impl Ui {
             }
         });
         let this = Rc::downgrade(ui);
+        w.on_reorder_app(move |from, to| {
+            if let Some(ui) = this.upgrade() {
+                {
+                    let mut core = ui.core.borrow_mut();
+                    let n = core.apps.len();
+                    let (from, to) = (from as usize, to as usize);
+                    if from < n && to < n && from != to {
+                        let app = core.apps.remove(from);
+                        core.apps.insert(to, app);
+                    }
+                }
+                ui.set_selected_app(to);
+                ui.save_apps_now();
+                ui.refresh_editor_models();
+                ui.refresh_preview();
+            }
+        });
+        let this = Rc::downgrade(ui);
         w.on_set_app_field(move |i, field, value| {
             if let Some(ui) = this.upgrade() {
                 {
