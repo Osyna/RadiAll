@@ -452,8 +452,10 @@ impl Ui {
                 .map(|c| c.to_uppercase().to_string())
                 .unwrap_or_default()
                 .into(),
-            dot_count: win_count.min(6) as i32,
-            sel_dot: sel as i32,
+            // window dots + selection are app/window concepts; actions all
+            // inherit the app's wm_class and would show identical noise
+            dot_count: if is_action { 0 } else { win_count.min(6) as i32 },
+            sel_dot: if is_action { -1 } else { sel as i32 },
             is_action,
             tint,
             wedge: if is_action {
@@ -528,7 +530,9 @@ impl Ui {
         };
         let label = match ring.get(idx) {
             Some(e) => {
-                let ws = core.windows_for(e);
+                // actions share the app's wm_class: the "· title i/N" window
+                // suffix belongs to app/window slices only
+                let ws = if e.is_action() { Vec::new() } else { core.windows_for(e) };
                 if ws.len() > 1 {
                     let sel = core.selected_window_index(e).max(0) as usize;
                     let title = ws.get(sel).map(|w| w.title.as_str()).unwrap_or("");
