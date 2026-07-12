@@ -215,13 +215,28 @@ fn apply_overlay_rules() -> bool {
         }
     }
 
+    // The settings window floats centered, unresized by tiling.
+    const SETTINGS_NEW: [&str; 2] = ["float on", "center on"];
+    const SETTINGS_LEGACY: [&str; 2] = ["float", "center"];
+
     let new_ok = EFFECTS_NEW.iter().try_fold(true, |acc, effect| {
         keyword_ok("windowrule", &format!("{effect}, match:title ^(RadiAll)$")).map(|ok| acc && ok)
     });
     match new_ok {
         None => return false, // no hyprctl at all
-        Some(true) => return true,
+        Some(true) => {
+            for effect in SETTINGS_NEW {
+                keyword_ok(
+                    "windowrule",
+                    &format!("{effect}, match:title ^(RadiAll Settings)$"),
+                );
+            }
+            return true;
+        }
         Some(false) => log::info!("new windowrule syntax rejected, trying windowrulev2"),
+    }
+    for effect in SETTINGS_LEGACY {
+        keyword_ok("windowrulev2", &format!("{effect}, title:^(RadiAll Settings)$"));
     }
     EFFECTS_LEGACY.iter().all(|effect| {
         keyword_ok("windowrulev2", &format!("{effect}, title:^(RadiAll)$")) == Some(true)

@@ -67,7 +67,11 @@ pub struct Settings {
     pub seg_gap: f32,
     /// Inactive-section fill; "" = invisible (band shows through).
     pub seg_bg: String,
+    /// Center hole minimum radius, design px (the hole grows with ring size).
+    pub hole_size: f32,
     pub show_labels: bool,
+    /// Window-count dots under app icons.
+    pub show_dots: bool,
     /// Live window thumbnail while scrolling a multi-window app.
     /// Parsed for compat; the standalone build shows a title preview instead.
     pub thumbnails: bool,
@@ -97,7 +101,9 @@ impl Default for Settings {
             section_inset: 3.0,
             seg_gap: 0.0,
             seg_bg: String::new(),
+            hole_size: 64.0,
             show_labels: true,
+            show_dots: true,
             thumbnails: false,
             follow_outside: false,
             hold_ms: 450.0,

@@ -152,8 +152,10 @@ export component SettingsWindow inherits Window {
     title: "RadiAll Settings";
     default-font-family: Skin.font;
     background: Skin.panel-bg;
-    preferred-width: 1080px;
-    preferred-height: 680px;
+    // Fixed size = non-resizable (min == max for the compositor); floats
+    // centered via the Hyprland rules the daemon applies at startup.
+    width: 1140px;
+    height: 720px;
 
     // ---- preview wheel (small, non-interactive) ----
     in property <length> pv-outer-r;
@@ -182,6 +184,8 @@ export component SettingsWindow inherits Window {
     in property <float> wheel-opacity <=> ed.wheel-opacity;
     in property <bool> show-labels <=> ed.show-labels;
     in property <bool> follow-outside <=> ed.follow-outside;
+    in property <float> hole-size <=> ed.hole-size;
+    in property <bool> show-dots <=> ed.show-dots;
     in property <float> sector-radius <=> ed.sector-radius;
     in property <float> seg-radius <=> ed.seg-radius;
     in property <float> section-inset <=> ed.section-inset;
@@ -214,6 +218,7 @@ export component SettingsWindow inherits Window {
     callback icon-query <=> ed.icon-query;
     callback open-picker <=> ed.open-picker;
     callback color-picked <=> ed.color-picked;
+    callback icon-picked <=> ed.icon-picked;
     in-out property <string> picker-for <=> ed.picker-for;
     in-out property <float> picker-h <=> ed.picker-h;
     in-out property <float> picker-s <=> ed.picker-s;

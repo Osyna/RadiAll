@@ -44,7 +44,7 @@ impl Geometry {
         let ring_r = s(settings.ring_radius) * ui_scale;
         let icon_box = s(settings.icon_size) * ui_scale;
         let outer_r = ring_r + icon_box * 0.96;
-        let inner_r = (s(64.0) * ui_scale).max(ring_r - icon_box * 0.90);
+        let inner_r = (s(settings.hole_size) * ui_scale).max(ring_r - icon_box * 0.90);
         let gap = s(10.0);
         let btn_r = s(23.0);
         let arc_radius = outer_r + gap + btn_r;
@@ -346,6 +346,7 @@ impl Ui {
         g.set_mono_font(skin.mono_font.clone().into());
         g.set_wheel_opacity(core.settings.wheel_opacity);
         g.set_show_labels(core.settings.show_labels);
+        g.set_show_dots(core.settings.show_dots);
         g.set_on_band(to_color(a.on_band));
         g.set_dot(to_color(a.dot));
         g.set_rim(to_color(a.rim));
@@ -1090,22 +1091,44 @@ impl Ui {
             .collect()
     }
 
-    /// Icon-library picker rows for `query`, capped (search-as-you-type).
+    /// Icon picker rows for `query`: installed-app THEME icons first (their
+    /// value = the portable icon NAME), then the glyph SVG library (value =
+    /// absolute path). Capped for search-as-you-type.
     fn icon_pick_rows(core: &Core, query: &str) -> Vec<IconPick> {
-        core.icons
-            .search(query, 200)
-            .into_iter()
-            .map(|e| {
-                let path = e.path.to_string_lossy().to_string();
-                let (icon, _) = Self::load_image(&path, 24);
-                IconPick {
-                    name: e.name.clone().into(),
-                    set: e.set.clone().into(),
-                    path: path.into(),
-                    icon,
-                }
+        let q = query.trim().to_lowercase();
+        let mut rows: Vec<IconPick> = core
+            .index
+            .installed()
+            .iter()
+            .filter(|d| !d.icon.is_empty())
+            .filter(|d| {
+                q.is_empty()
+                    || d.name.to_lowercase().contains(&q)
+                    || d.icon.to_lowercase().contains(&q)
             })
-            .collect()
+            .take(40)
+            .filter_map(|d| {
+                let (icon, has) = Self::load_image(&d.icon, 24);
+                has.then(|| IconPick {
+                    name: d.name.clone().into(),
+                    set: "apps".into(),
+                    path: d.icon.clone().into(), // theme icon NAME, portable
+                    icon,
+                })
+            })
+            .collect();
+        rows.extend(core.icons.search(query, 200).into_iter().map(|e| {
+            let path = e.path.to_string_lossy().to_string();
+            let (icon, _) = Self::load_image(&path, 24);
+            IconPick {
+                name: e.name.clone().into(),
+                set: e.set.clone().into(),
+                path: path.into(),
+                icon,
+            }
+        }));
+        rows.truncate(220);
+        rows
     }
 
     fn refresh_editor_models(self: &Rc<Self>) {
@@ -1153,6 +1176,8 @@ impl Ui {
         sw.set_section_inset(s.section_inset);
         sw.set_seg_gap(s.seg_gap);
         sw.set_seg_bg_hex(s.seg_bg.clone().into());
+        sw.set_hole_size(s.hole_size);
+        sw.set_show_dots(s.show_dots);
         sw.set_shortcuts_enabled(s.shortcuts_enabled);
         sw.set_persist_binds(s.persist_binds);
         sw.set_sc_apps(s.shortcuts.apps.clone().into());
@@ -1306,6 +1331,23 @@ impl Ui {
                 } else {
                     sw.invoke_set_setting(target, hex);
                 }
+            }
+        });
+
+        // icon picker selection: same target scheme as the color picker
+        let this = Rc::downgrade(ui);
+        w.on_icon_picked(move |target, value| {
+            if let Some(ui) = this.upgrade() {
+                let Some(sw) = ui.settings_handle() else { return };
+                if let Some(idx) = target.strip_prefix("app:") {
+                    if let Ok(i) = idx.parse::<i32>() {
+                        sw.invoke_set_app_field(i, "icon".into(), value);
+                    }
+                } else if let Some(id) = target.strip_prefix("act:") {
+                    sw.invoke_set_custom_field(id.into(), "icon".into(), value);
+                }
+                // the icon on the app list refreshes with the models
+                ui.refresh_editor_models();
             }
         });
 
@@ -1525,7 +1567,9 @@ impl Ui {
                         "sectionInset" => s.section_inset = v.parse().unwrap_or(s.section_inset),
                         "segGap" => s.seg_gap = v.parse().unwrap_or(s.seg_gap),
                         "segBg" => s.seg_bg = v,
+                        "holeSize" => s.hole_size = v.parse().unwrap_or(s.hole_size),
                         "showLabels" => s.show_labels = v == "true",
+                        "showDots" => s.show_dots = v == "true",
                         "followOutside" => s.follow_outside = v == "true",
                         "theme" => s.theme = v,
                         "shortcutsEnabled" => s.shortcuts_enabled = v == "true",

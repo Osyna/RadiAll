@@ -243,6 +243,115 @@ component HSlider inherits Rectangle {
     }
 }
 
+// Vertical scroll area with an always-visible scrollbar when content
+// overflows (std ScrollView only hints on hover).
+component VScroll inherits Rectangle {
+    sv := ScrollView {
+        width: parent.width;
+        height: parent.height;
+        @children
+    }
+    // hit zone is s(14) wide; the visible bar is a slim right-aligned strip
+    if sv.viewport-height > sv.visible-height: Rectangle {
+        x: parent.width - Skin.s(14);
+        width: Skin.s(14);
+        height: parent.height;
+        Rectangle {
+            x: parent.width - Skin.s(4);
+            width: Skin.s(3);
+            height: parent.height;
+            border-radius: Skin.s(2);
+            background: Skin.tint(0.06);
+            vs-thumb := Rectangle {
+                width: parent.width;
+                height: Math.max(parent.height * sv.visible-height / sv.viewport-height, Skin.s(24));
+                y: (parent.height - self.height)
+                    * Math.clamp(-sv.viewport-y / Math.max(sv.viewport-height - sv.visible-height, 1px), 0, 1);
+                border-radius: parent.border-radius;
+                background: vs-ta.has-hover || vs-ta.pressed ? Skin.tint(0.5) : Skin.tint(0.25);
+            }
+        }
+        vs-ta := TouchArea {
+            pointer-event(e) => {
+                if (self.pressed || e.kind == PointerEventKind.down) {
+                    sv.viewport-y = -Math.clamp(
+                        (self.mouse-y - vs-thumb.height / 2) / Math.max(parent.height - vs-thumb.height, 1px),
+                        0, 1) * (sv.viewport-height - sv.visible-height);
+                }
+            }
+        }
+    }
+}
+
+// One-line compact slider row: small label, slim slider, value readout.
+component CompactSlider inherits HorizontalLayout {
+    in property <string> label;
+    in property <string> suffix: "px";
+    in property <float> minimum;
+    in property <float> maximum;
+    in property <float> step: 1;
+    in property <float> value;
+    in property <float> display-mul: 1;    // 100 for % readouts
+    callback changed(float);
+
+    spacing: Skin.s(10);
+    height: Skin.s(26);
+    Text {
+        width: Skin.s(100);
+        text: root.label;
+        color: Skin.fg;
+        font-size: Skin.s(12);
+        vertical-alignment: center;
+        overflow: elide;
+    }
+    csl := HSlider {
+        minimum: root.minimum;
+        maximum: root.maximum;
+        step: root.step;
+        value: root.value;
+        moved(v) => {
+            root.changed(v);
+        }
+    }
+    Text {
+        width: Skin.s(42);
+        text: "\{Math.round(csl.live * root.display-mul)}\{root.suffix}";
+        color: Skin.fg-dim;
+        font-size: Skin.s(11);
+        vertical-alignment: center;
+        horizontal-alignment: right;
+    }
+}
+
+// Labeled pill toggle for a compact toggles row.
+component ToggleChip inherits Rectangle {
+    in property <string> label;
+    in property <bool> on;
+    callback toggled(bool);
+
+    height: Skin.s(28);
+    width: chip-l.preferred-width + Skin.s(26);
+    border-radius: self.height / 2;
+    background: root.on ? Skin.accent.with-alpha(0.2) : Skin.tint(0.06);
+    border-width: 1px;
+    border-color: root.on ? Skin.accent : Skin.tint(0.10);
+    animate background, border-color { duration: 120ms; }
+    chip-l := Text {
+        x: Skin.s(13);
+        height: 100%;
+        text: root.label;
+        color: root.on ? Skin.fg-strong : Skin.fg-dim;
+        font-size: Skin.s(12);
+        vertical-alignment: center;
+    }
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.toggled(!root.on);
+        }
+    }
+}
+
 // Key-combo capture cell. Click -> focused recording state; first non-modifier
 // key press is encoded (lowercase, '+'-joined, modifier order ctrl,alt,shift,
 // super) and emitted via captured(). Escape or focus loss cancels.
@@ -426,6 +535,8 @@ export component Editor {
     in property <float> wheel-opacity;
     in property <bool> show-labels;
     in property <bool> follow-outside;
+    in property <float> hole-size;
+    in property <bool> show-dots;
     // section geometry (design px) + inactive-section fill
     in property <float> sector-radius;
     in property <float> seg-radius;
@@ -471,6 +582,8 @@ export component Editor {
     // Targets: "accent" | "bg" | "segBg" | "app:<idx>" | "act:<action-id>".
     callback open-picker(string, string);
     callback color-picked(string, float, float, float, float);
+    // icon picker selection: (target "app:<idx>" | "act:<id>", icon name or path)
+    callback icon-picked(string, string);
     in-out property <string> picker-for: "";
     in-out property <float> picker-h: 0;
     in-out property <float> picker-s: 1;
@@ -718,6 +831,13 @@ export component Editor {
                                             root.set-app-field(root.selected-app, "icon", t);
                                         }
                                     }
+                                    PillBtn {
+                                        text: "Browse…";
+                                        clicked => {
+                                            root.icon-query("");
+                                            root.picking-icon-for = "app:\{root.selected-app}";
+                                        }
+                                    }
                                 }
                                 SettingRow {
                                     label: "Command";
@@ -878,7 +998,7 @@ export component Editor {
                                                     text: "Browse…";
                                                     clicked => {
                                                         root.icon-query("");
-                                                        root.picking-icon-for = a.id;
+                                                        root.picking-icon-for = "act:\{a.id}";
                                                     }
                                                 }
                                             }
@@ -933,7 +1053,7 @@ export component Editor {
                 }
 
                 // ================================================= LOOK tab
-                ScrollView {
+                VScroll {
                     visible: root.cur-tab == 1;
 
                     VerticalLayout {
@@ -1138,167 +1258,124 @@ export component Editor {
 
                         Rectangle { height: Skin.s(6); }
                         GroupHead { text: "WHEEL"; }
-                        SettingRow {
+                        CompactSlider {
                             label: "Icon size";
-                            sl-icon := HSlider {
-                                minimum: 36;
-                                maximum: 80;
-                                step: 1;
-                                value: root.icon-size;
-                                moved(v) => {
-                                    root.set-setting("iconSize", "\{Math.round(v)}");
-                                }
-                            }
-                            Text {
-                                width: Skin.s(44);
-                                text: "\{Math.round(sl-icon.live)}px";
-                                color: Skin.fg-dim;
-                                font-size: Skin.s(12);
-                                vertical-alignment: center;
-                                horizontal-alignment: right;
+                            minimum: 36;
+                            maximum: 80;
+                            value: root.icon-size;
+                            changed(v) => {
+                                root.set-setting("iconSize", "\{Math.round(v)}");
                             }
                         }
-                        SettingRow {
+                        CompactSlider {
                             label: "Ring size";
-                            sl-ring := HSlider {
-                                minimum: 110;
-                                maximum: 240;
-                                step: 1;
-                                value: root.ring-radius;
-                                moved(v) => {
-                                    root.set-setting("ringRadius", "\{Math.round(v)}");
-                                }
-                            }
-                            Text {
-                                width: Skin.s(44);
-                                text: "\{Math.round(sl-ring.live)}px";
-                                color: Skin.fg-dim;
-                                font-size: Skin.s(12);
-                                vertical-alignment: center;
-                                horizontal-alignment: right;
+                            minimum: 110;
+                            maximum: 240;
+                            value: root.ring-radius;
+                            changed(v) => {
+                                root.set-setting("ringRadius", "\{Math.round(v)}");
                             }
                         }
-                        SettingRow {
+                        CompactSlider {
+                            label: "Hole size";
+                            minimum: 40;
+                            maximum: 130;
+                            value: root.hole-size;
+                            changed(v) => {
+                                root.set-setting("holeSize", "\{Math.round(v)}");
+                            }
+                        }
+                        CompactSlider {
                             label: "Backdrop dim";
-                            sl-dim := HSlider {
-                                minimum: 0;
-                                maximum: 0.6;
-                                step: 0.01;
-                                value: root.dim;
-                                moved(v) => {
-                                    root.set-setting("dim", "\{Math.round(v * 100) / 100}");
-                                }
-                            }
-                            Text {
-                                width: Skin.s(44);
-                                text: "\{Math.round(sl-dim.live * 100)}%";
-                                color: Skin.fg-dim;
-                                font-size: Skin.s(12);
-                                vertical-alignment: center;
-                                horizontal-alignment: right;
+                            suffix: "%";
+                            minimum: 0;
+                            maximum: 0.6;
+                            step: 0.01;
+                            display-mul: 100;
+                            value: root.dim;
+                            changed(v) => {
+                                root.set-setting("dim", "\{Math.round(v * 100) / 100}");
                             }
                         }
-                        SettingRow {
+                        CompactSlider {
                             label: "Wheel opacity";
-                            sl-op := HSlider {
-                                minimum: 0.5;
-                                maximum: 1;
-                                step: 0.01;
-                                value: root.wheel-opacity;
-                                moved(v) => {
-                                    root.set-setting("wheelOpacity", "\{Math.round(v * 100) / 100}");
+                            suffix: "%";
+                            minimum: 0;
+                            maximum: 1;
+                            step: 0.01;
+                            display-mul: 100;
+                            value: root.wheel-opacity;
+                            changed(v) => {
+                                root.set-setting("wheelOpacity", "\{Math.round(v * 100) / 100}");
+                            }
+                        }
+                        // toggles: one compact chip row
+                        HorizontalLayout {
+                            spacing: Skin.s(8);
+                            alignment: start;
+                            ToggleChip {
+                                label: "Labels";
+                                on: root.show-labels;
+                                toggled(v) => {
+                                    root.set-setting("showLabels", v ? "true" : "false");
                                 }
                             }
-                            Text {
-                                width: Skin.s(44);
-                                text: "\{Math.round(sl-op.live * 100)}%";
-                                color: Skin.fg-dim;
-                                font-size: Skin.s(12);
-                                vertical-alignment: center;
-                                horizontal-alignment: right;
+                            ToggleChip {
+                                label: "Window dots";
+                                on: root.show-dots;
+                                toggled(v) => {
+                                    root.set-setting("showDots", v ? "true" : "false");
+                                }
+                            }
+                            ToggleChip {
+                                label: "Follow cursor";
+                                on: root.follow-outside;
+                                toggled(v) => {
+                                    root.set-setting("followOutside", v ? "true" : "false");
+                                }
                             }
                         }
 
                         Rectangle { height: Skin.s(6); }
                         GroupHead { text: "SECTIONS"; }
-                        SettingRow {
+                        CompactSlider {
                             label: "Active radius";
-                            sl-srad := HSlider {
-                                minimum: 0;
-                                maximum: 28;
-                                step: 0.5;
-                                value: root.sector-radius;
-                                moved(v) => {
-                                    root.set-setting("sectorRadius", "\{Math.round(v * 2) / 2}");
-                                }
-                            }
-                            Text {
-                                width: Skin.s(44);
-                                text: "\{Math.round(sl-srad.live)}px";
-                                color: Skin.fg-dim;
-                                font-size: Skin.s(12);
-                                vertical-alignment: center;
-                                horizontal-alignment: right;
+                            minimum: 0;
+                            maximum: 28;
+                            step: 0.5;
+                            value: root.sector-radius;
+                            changed(v) => {
+                                root.set-setting("sectorRadius", "\{Math.round(v * 2) / 2}");
                             }
                         }
-                        SettingRow {
+                        CompactSlider {
                             label: "Inactive radius";
-                            sl-irad := HSlider {
-                                minimum: 0;
-                                maximum: 28;
-                                step: 0.5;
-                                value: root.seg-radius;
-                                moved(v) => {
-                                    root.set-setting("segRadius", "\{Math.round(v * 2) / 2}");
-                                }
-                            }
-                            Text {
-                                width: Skin.s(44);
-                                text: "\{Math.round(sl-irad.live)}px";
-                                color: Skin.fg-dim;
-                                font-size: Skin.s(12);
-                                vertical-alignment: center;
-                                horizontal-alignment: right;
+                            minimum: 0;
+                            maximum: 28;
+                            step: 0.5;
+                            value: root.seg-radius;
+                            changed(v) => {
+                                root.set-setting("segRadius", "\{Math.round(v * 2) / 2}");
                             }
                         }
-                        SettingRow {
+                        CompactSlider {
                             label: "Edge padding";
-                            sl-inset := HSlider {
-                                minimum: 0;
-                                maximum: 20;
-                                step: 0.5;
-                                value: root.section-inset;
-                                moved(v) => {
-                                    root.set-setting("sectionInset", "\{Math.round(v * 2) / 2}");
-                                }
-                            }
-                            Text {
-                                width: Skin.s(44);
-                                text: "\{Math.round(sl-inset.live)}px";
-                                color: Skin.fg-dim;
-                                font-size: Skin.s(12);
-                                vertical-alignment: center;
-                                horizontal-alignment: right;
+                            minimum: 0;
+                            maximum: 20;
+                            step: 0.5;
+                            value: root.section-inset;
+                            changed(v) => {
+                                root.set-setting("sectionInset", "\{Math.round(v * 2) / 2}");
                             }
                         }
-                        SettingRow {
+                        CompactSlider {
                             label: "Section gap";
-                            sl-gap := HSlider {
-                                minimum: 0;
-                                maximum: 24;
-                                step: 0.5;
-                                value: root.seg-gap;
-                                moved(v) => {
-                                    root.set-setting("segGap", "\{Math.round(v * 2) / 2}");
-                                }
-                            }
-                            Text {
-                                width: Skin.s(44);
-                                text: "\{Math.round(sl-gap.live)}px";
-                                color: Skin.fg-dim;
-                                font-size: Skin.s(12);
-                                vertical-alignment: center;
-                                horizontal-alignment: right;
+                            minimum: 0;
+                            maximum: 24;
+                            step: 0.5;
+                            value: root.seg-gap;
+                            changed(v) => {
+                                root.set-setting("segGap", "\{Math.round(v * 2) / 2}");
                             }
                         }
                         SettingRow {
@@ -1399,36 +1476,6 @@ export component Editor {
                             wrap: word-wrap;
                         }
 
-                        Rectangle { height: Skin.s(6); }
-                        GroupHead { text: "BEHAVIOUR"; }
-                        SettingRow {
-                            label: "Show labels";
-                            label-width: Skin.s(150);
-                            Toggle {
-                                on: root.show-labels;
-                                toggled(v) => {
-                                    root.set-setting("showLabels", v ? "true" : "false");
-                                }
-                            }
-                            Rectangle { }
-                        }
-                        SettingRow {
-                            label: "Follow cursor";
-                            label-width: Skin.s(150);
-                            Toggle {
-                                on: root.follow-outside;
-                                toggled(v) => {
-                                    root.set-setting("followOutside", v ? "true" : "false");
-                                }
-                            }
-                            Rectangle { }
-                        }
-                        Text {
-                            text: "Accent sector keeps tracking the cursor outside the ring.";
-                            color: Skin.fg-dim;
-                            font-size: Skin.s(11);
-                            wrap: word-wrap;
-                        }
 
                         Rectangle { height: Skin.s(6); }
                         GroupHead { text: "RING SHORTCUTS"; }
@@ -1707,7 +1754,9 @@ export component Editor {
                                 height: Skin.s(22);
                                 y: (parent.height - self.height) / 2;
                                 source: entry.icon;
-                                colorize: Skin.fg;
+                                // glyph sets are monochrome -> tint to fg;
+                                // real app icons keep their own colors
+                                colorize: entry.set == "apps" ? transparent : Skin.fg;
                                 image-fit: contain;
                             }
                         }
@@ -1729,7 +1778,7 @@ export component Editor {
                     ic-ta := TouchArea {
                         mouse-cursor: pointer;
                         clicked => {
-                            root.set-custom-field(root.picking-icon-for, "icon", entry.path);
+                            root.icon-picked(root.picking-icon-for, entry.path);
                             root.picking-icon-for = "";
                         }
                     }
