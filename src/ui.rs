@@ -609,8 +609,12 @@ impl Ui {
     }
 
     pub fn open_ring(self: &Rc<Self>, mode: Mode) {
+        // A reopen during the close fade is a ring SWITCH, not a fresh open:
+        // the overlay is still mapped and still holds focus, so a "fresh"
+        // snapshot here would capture our own dying window (empty class) as
+        // the actions target -> empty actions ring on the next switch.
+        let was_open = *self.open.borrow() || self.hide_timer.running();
         self.hide_timer.stop();
-        let was_open = *self.open.borrow();
         *self.mode.borrow_mut() = mode;
         *self.arc.borrow_mut() = None;
         let win = match self.ring_handle() {

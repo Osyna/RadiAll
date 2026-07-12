@@ -251,6 +251,12 @@ impl Core {
     /// Focused window merged with its configured app (icon/custom actions).
     pub fn focused_app(&self) -> Option<FocusedApp> {
         let win = self.active.as_ref()?;
+        // A class-less window can't be matched to apps or action templates —
+        // and our own overlay reports an empty app_id, so this also stops a
+        // mid-close focus snapshot from targeting the launcher itself.
+        if win.app_id.is_empty() {
+            return None;
+        }
         let cls = &win.app_id;
         let cfg = self
             .apps
@@ -597,6 +603,16 @@ mod tests {
         // no snapshot (nothing focused at open) -> empty ring
         core.actions_target = None;
         assert!(core.ring_model(Mode::Actions).is_empty());
+    }
+
+    #[test]
+    fn classless_window_is_never_a_focus_target() {
+        // Our own overlay reports an empty app_id; snapshotting it mid-close
+        // must yield None (keep/clear semantics live in open_ring), never a
+        // dead FocusedApp that builds an empty actions ring.
+        let mut core = core_with(vec![]);
+        core.active = Some(win("9", "", "RadiAll", true));
+        assert!(core.focused_app().is_none());
     }
 
     #[test]
