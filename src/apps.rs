@@ -371,8 +371,13 @@ pub fn icon_path(icon: &str) -> Option<PathBuf> {
 }
 
 /// Icon pixel cache: scans repeat and decoding (especially SVG) is costly.
+/// Bounded: pathological picker sessions (searching across a 24k-glyph
+/// library) would otherwise grow it without limit.
 static ICON_CACHE: LazyLock<Mutex<HashMap<(String, u32), Option<SharedPixelBuffer<Rgba8Pixel>>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// ~24px picker thumbs are ≈2.3 KB each; 2048 entries ≈ 5 MB worst case.
+const ICON_CACHE_CAP: usize = 2048;
 
 /// Decode an icon (PNG/JPEG or SVG) to RGBA pixels at ~`px` size. Send-safe.
 /// Aspect ratio preserved: the long edge is at most `px`.
@@ -385,7 +390,15 @@ pub fn load_icon_pixels(icon: &str, px: u32) -> Option<SharedPixelBuffer<Rgba8Pi
         return cached.clone();
     }
     let decoded = icon_path(icon).and_then(|path| decode_at(&path, px));
-    ICON_CACHE.lock().insert(key, decoded.clone());
+    {
+        let mut cache = ICON_CACHE.lock();
+        // Full? Drop the lot — rebuilding the visible page is cheaper than
+        // LRU bookkeeping on every ring open, and it caps the worst case.
+        if cache.len() >= ICON_CACHE_CAP {
+            cache.clear();
+        }
+        cache.insert(key, decoded.clone());
+    }
     decoded
 }
 

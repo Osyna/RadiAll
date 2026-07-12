@@ -10,10 +10,10 @@ repository = "https://github.com/Osyna/RadiAll"
 slint = { version = "1.17", default-features = false, features = [
     "std",
     "compat-1-2",
-    "accessibility",
     "backend-winit-wayland",
     "backend-winit-x11",
     "renderer-femtovg",
+    "renderer-software",
     "system-tray",
     "image-default-formats",
 ] }
@@ -37,5 +37,7 @@ env_logger = { version = "0.11", default-features = false, features = ["auto-col
 slint-build = "1.17"
 
 [profile.release]
-lto = "thin"
+lto = "fat"          # whole-program LTO: smaller AND faster than thin
+codegen-units = 1    # one unit -> best inlining/dedup, smaller binary
+panic = "abort"      # a daemon never unwinds; drops landing-pad tables
 strip = true

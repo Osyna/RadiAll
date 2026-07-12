@@ -678,6 +678,15 @@ impl Ui {
 
     pub fn open_settings(self: &Rc<Self>) {
         self.close();
+        // The 24k-glyph icon index is picker-only: scan it on first settings
+        // open instead of at daemon startup (saves ~4 MB and a 24k-file walk
+        // for daemons that never open the editor).
+        {
+            let mut core = self.core.borrow_mut();
+            if core.icons.is_none() {
+                core.icons = Some(crate::icons::IconLib::scan());
+            }
+        }
         let win = match self.settings_handle() {
             Some(w) => w,
             None => {
@@ -1117,7 +1126,8 @@ impl Ui {
                 })
             })
             .collect();
-        rows.extend(core.icons.search(query, 200).into_iter().map(|e| {
+        let lib = core.icons.as_ref();
+        rows.extend(lib.into_iter().flat_map(|l| l.search(query, 200)).map(|e| {
             let path = e.path.to_string_lossy().to_string();
             let (icon, _) = Self::load_image(&path, 24);
             IconPick {
@@ -1155,7 +1165,7 @@ impl Ui {
         let sw = &sw;
         sw.set_apps(ModelRc::new(VecModel::from(apps_rows)));
         sw.set_installed(ModelRc::new(VecModel::from(installed_rows)));
-        sw.set_icon_lib_count(core.icons.len() as i32);
+        sw.set_icon_lib_count(core.icons.as_ref().map_or(0, |l| l.len()) as i32);
         sw.set_themes(ModelRc::new(VecModel::from(
             crate::theme::available()
                 .into_iter()
@@ -1675,6 +1685,9 @@ impl Ui {
                 if let Some(w) = ui.settings_win.borrow_mut().take() {
                     w.hide().ok();
                 }
+                // Release the 24k-glyph index with the editor; reopening
+                // re-scans (~80 ms) — cheaper than 4 MB parked forever.
+                ui.core.borrow_mut().icons = None;
             }
         });
     }

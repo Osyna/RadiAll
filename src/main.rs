@@ -65,8 +65,19 @@ fn run_daemon() -> Result<(), Box<dyn std::error::Error>> {
     let listener = ipc::bind()?;
 
     // initialize the Slint backend up front: everything below queues work
-    // onto the event loop before any window exists
-    slint::BackendSelector::new().select()?;
+    // onto the event loop before any window exists.
+    // RADIALL_RENDERER=software swaps the GPU renderer for CPU rendering:
+    // slower frames, but no GL/EGL driver stack in memory (tens of MB on
+    // some drivers) — for RAM-tight or GPU-less setups. Default: femtovg.
+    let selector = slint::BackendSelector::new();
+    let selector = match std::env::var("RADIALL_RENDERER").ok().as_deref() {
+        Some(name) if !name.is_empty() => {
+            log::info!("renderer override: {name}");
+            selector.renderer_name(name.into())
+        }
+        _ => selector,
+    };
+    selector.select()?;
 
     config::seed_themes(&BUNDLED_THEMES);
     let settings = config::load_settings();
@@ -132,7 +143,6 @@ fn run_daemon() -> Result<(), Box<dyn std::error::Error>> {
         let mut core = ring::Core::new(settings, app_list, index, comp);
         core.overlay_ready = overlay_ready;
         core.shortcuts = Some(sc);
-        core.icons = icons::IconLib::scan();
         let ui = match ui::Ui::new(core) {
             Ok(ui) => ui,
             Err(e) => {

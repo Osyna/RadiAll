@@ -122,6 +122,14 @@ protocol), the apps ring still works fully — the windows/actions rings degrade
 gracefully. On Hyprland the overlay is a floating pinned window sized by
 window rules; elsewhere it falls back to a fullscreen surface.
 
+### Resource footprint
+
+The daemon idles at ~28 MB RSS with **zero** CPU wakeups until a ring opens;
+the GPU renderer (femtovg) then keeps a GL context alive for instant opens —
+on some drivers (NVIDIA) that maps large shared driver libraries. RAM-tight
+or GPU-less? `RADIALL_RENDERER=software radiall --daemon` renders on CPU:
+no GL stack at all, roughly half the exercised footprint, same visuals.
+
 State is JSON in `~/.config/radiall/` (`settings.json`, `apps.json`,
 `themes/*.json`), easy to read and commit. Configs from the old
 Quickshell-based RadiAll are migrated automatically on first run.
