@@ -17,6 +17,41 @@ pub const G_FLOAT: &str = "\u{f2d2}";
 pub const G_FULL: &str = "\u{f065}";
 pub const G_OPEN: &str = "\u{f35d}";
 
+const TITLE_MAX: usize = 160; // safety cap only — display overflow marquees
+
+/// Window titles usually repeat the app: "Page — Mozilla Firefox",
+/// "docs - Thunar". Ring slices already carry the app's icon (and app-mode
+/// labels lead with the app name), so strip trailing
+/// "<sep> <something containing the app name>" segments. Display length is
+/// the wheel's problem (marquee) — only a safety cap here.
+pub fn clean_title(t: &str, app: &str) -> String {
+    let mut s = t.trim();
+    let app_lc = app.to_lowercase();
+    for _ in 0..2 {
+        let cut = [" — ", " – ", " - ", " | "]
+            .iter()
+            .filter_map(|sep| s.rfind(sep).map(|i| (i, sep.len())))
+            .max_by_key(|&(i, _)| i);
+        match cut {
+            Some((i, sep_len))
+                if !app_lc.is_empty()
+                    && s[i + sep_len..].to_lowercase().contains(&app_lc)
+                    && !s[..i].trim().is_empty() =>
+            {
+                s = s[..i].trim_end();
+            }
+            _ => break,
+        }
+    }
+    if s.chars().count() > TITLE_MAX {
+        let mut out: String = s.chars().take(TITLE_MAX).collect();
+        out.push('…');
+        out
+    } else {
+        s.to_owned()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Mode {
     #[default]
@@ -210,8 +245,20 @@ impl Core {
                     .iter()
                     .map(|w| {
                         let cls = &w.app_id;
+                        // slice label: the window title, minus the redundant
+                        // "— App Name" tail (the icon already says which app)
+                        let app_name = self
+                            .apps
+                            .iter()
+                            .find(|a| a.wm_class.eq_ignore_ascii_case(cls))
+                            .map(|a| a.name.as_str())
+                            .unwrap_or(cls);
                         RingEntry {
-                            name: if w.title.is_empty() { cls.clone() } else { w.title.clone() },
+                            name: if w.title.is_empty() {
+                                cls.clone()
+                            } else {
+                                clean_title(&w.title, app_name)
+                            },
                             icon: self.index.icon_for_class(cls, &self.apps),
                             glyph: G_APP.into(),
                             wm_class: cls.clone(),
@@ -613,6 +660,45 @@ mod tests {
         let mut core = core_with(vec![]);
         core.active = Some(win("9", "", "RadiAll", true));
         assert!(core.focused_app().is_none());
+    }
+
+    #[test]
+    fn title_cleaning() {
+        // strips the app-name suffix browsers append
+        assert_eq!(
+            clean_title("Qwandra · Cheap flights — Mozilla Firefox", "Firefox"),
+            "Qwandra · Cheap flights"
+        );
+        assert_eq!(clean_title("docs - Thunar", "Files"), "docs - Thunar"); // no app match -> kept
+        assert_eq!(clean_title("docs - Thunar", "Thunar"), "docs");
+        // two-stage suffixes ("Page — Firefox — Nightly" style) strip twice
+        assert_eq!(
+            clean_title("Page — Mozilla Firefox — Firefox Nightly", "Firefox"),
+            "Page"
+        );
+        // stripping is greedy but bounded (2 passes): any app-mentioning
+        // tail segment goes — the slice label leads with the app name anyway
+        assert_eq!(
+            clean_title("a - b | chromium thing - Chromium", "Chromium"),
+            "a - b"
+        );
+        // never strip down to nothing
+        assert_eq!(clean_title("Mozilla Firefox", "Firefox"), "Mozilla Firefox");
+        // safety cap still applies
+        let long = "x".repeat(200);
+        assert_eq!(clean_title(&long, "App").chars().count(), 161); // 160 + ellipsis
+        assert_eq!(clean_title("short", "App"), "short");
+    }
+
+    #[test]
+    fn windows_ring_names_are_cleaned_titles() {
+        // "firefox" is a configured app named "Firefox": its window slice
+        // label drops the "— Mozilla Firefox" tail. Unpinned classes clean
+        // against the class itself.
+        let mut core = core_with(vec![win("1", "firefox", "Page — Mozilla Firefox", true)]);
+        core.windows = vec![win("1", "firefox", "Page — Mozilla Firefox", true)];
+        let ring = core.ring_model(Mode::Windows);
+        assert_eq!(ring[0].name, "Page");
     }
 
     #[test]

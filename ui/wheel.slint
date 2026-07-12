@@ -321,21 +321,41 @@ export component Wheel {
         opacity: root.pill-on ? 1 : 0;
         animate opacity { duration: 130ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
         visible: self.opacity > 0.001;
-        width: ptxt.preferred-width + Skin.s(24) * self.k;
+        // The pill must fit the hole: cap at the chord width where it sits
+        // (2·r·√(1−0.46²) ≈ 1.78·r covers the lowered actions position too)
+        // and marquee-scroll the text instead of truncating it.
+        private property <length> pad: Skin.s(24) * self.k;
+        private property <length> max-w: root.inner-r * 1.78;
+        width: min(ptxt.preferred-width + self.pad, self.max-w);
         height: ptxt.preferred-height + Skin.s(12) * self.k;
         border-radius: Skin.s(9) * self.k;
         background: Skin.label-pill-bg;
+        clip: true;
         x: root.outer-r - self.width / 2;
         y: root.outer-r
             + (root.actions-mode ? root.inner-r * 0.46 * root.pop : 0px)
             - self.height / 2;
+        // ---- marquee (défilement): ping-pong at 55 px/s with 1.2 s end
+        // pauses. animation-tick() is only read while `scrolling`, so short
+        // labels cost zero redraws.
+        private property <float> over-px: (ptxt.preferred-width + self.pad - self.width) / 1px;
+        private property <bool> scrolling: root.pill-on && self.over-px > 1;
+        private property <float> travel-ms: self.over-px / 0.055;
+        private property <float> mt: Math.mod(animation-tick() / 1ms, 2 * (self.travel-ms + 1200));
+        private property <float> off-px:
+            self.mt < 1200 ? 0
+            : self.mt < 1200 + self.travel-ms ? (self.mt - 1200) * 0.055
+            : self.mt < 2400 + self.travel-ms ? self.over-px
+            : self.over-px - (self.mt - 2400 - self.travel-ms) * 0.055;
         ptxt := Text {
             text: root.center-label;
             color: Skin.label-fg;
             font-family: Skin.font;
             font-size: Skin.s(14) * parent.k;
             font-weight: 500;
-            x: (parent.width - self.width) / 2;
+            x: parent.scrolling
+                ? parent.pad / 2 - parent.off-px * 1px
+                : (parent.width - self.width) / 2;
             y: (parent.height - self.height) / 2;
         }
     }

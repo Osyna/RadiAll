@@ -33,7 +33,7 @@ const CENTER_TIMER_MS: u64 = 2000; // hole hover -> settings button
 const LONG_PRESS_MS: u64 = 400; // press-and-hold -> action arc
 const CLOSE_FADE_MS: u64 = 230; // window stays mapped through fade-out
 const ACTIVATE_DELAY_MS: u64 = 120; // unmap-refocus settle before dispatch
-const TITLE_TRUNCATE: usize = 42;
+// (window-title cleaning lives in ring.rs beside the model that uses it)
 
 // ------------------------------------------------------------- geometry
 
@@ -118,16 +118,6 @@ fn band_lum(c: Rgba) -> f32 {
 
 fn to_color(c: Rgba) -> slint::Color {
     slint::Color::from_argb_u8(c.a, c.r, c.g, c.b)
-}
-
-fn truncate_title(t: &str) -> String {
-    if t.chars().count() > TITLE_TRUNCATE {
-        let mut s: String = t.chars().take(TITLE_TRUNCATE).collect();
-        s.push('…');
-        s
-    } else {
-        t.to_owned()
-    }
 }
 
 // ----------------------------------------------------------- ui state
@@ -581,7 +571,7 @@ impl Ui {
                     format!(
                         "{}  ·  {}   {}/{}",
                         e.name,
-                        truncate_title(title),
+                        crate::ring::clean_title(title, &e.name),
                         sel + 1,
                         ws.len()
                     )
@@ -1751,13 +1741,5 @@ mod tests {
         // 180° tie resolves to -180 (matches the QML formula's JS % semantics)
         let d = rotation_delta(0.0, 4, 8);
         assert_eq!(d, -180.0);
-    }
-
-    #[test]
-    fn title_truncation() {
-        let long = "x".repeat(60);
-        let t = truncate_title(&long);
-        assert_eq!(t.chars().count(), 43); // 42 + ellipsis
-        assert_eq!(truncate_title("short"), "short");
     }
 }
