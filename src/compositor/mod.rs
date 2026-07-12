@@ -35,15 +35,14 @@ pub enum CompositorEvent {
     Windows(Vec<WindowInfo>),
     /// Currently focused window changed (None = nothing focused).
     Active(Option<WindowInfo>),
+    /// The compositor reloaded its config (Hyprland): keyword-applied binds
+    /// and window rules were wiped and have been / must be re-applied.
+    ConfigReloaded,
 }
 
 pub trait Compositor: Send {
     fn backend(&self) -> &'static str;
 
-    // ---- capabilities ----
-    fn can_list_windows(&self) -> bool {
-        true
-    }
     fn can_float(&self) -> bool {
         false
     }
@@ -51,6 +50,15 @@ pub trait Compositor: Send {
         false
     }
     fn can_manage_keybinds(&self) -> bool {
+        false
+    }
+
+    /// Configure the compositor so the ring window behaves as a true overlay
+    /// (floating, screen-sized, undecorated, above other windows) WITHOUT
+    /// xdg-fullscreen — real fullscreen makes compositors skip rendering the
+    /// windows behind it, breaking the transparent backdrop. Returns true when
+    /// the compositor is set up; false -> caller falls back to fullscreen.
+    fn setup_overlay(&mut self) -> bool {
         false
     }
 
@@ -80,9 +88,6 @@ struct NullCompositor;
 impl Compositor for NullCompositor {
     fn backend(&self) -> &'static str {
         "none"
-    }
-    fn can_list_windows(&self) -> bool {
-        false
     }
     fn windows(&mut self) -> Vec<WindowInfo> {
         Vec::new()

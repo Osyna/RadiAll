@@ -18,6 +18,8 @@ export component RingWindow inherits Window {
     background: transparent;
     title: "RadiAll";
     default-font-family: Skin.font;
+    preferred-width: 1280px;
+    preferred-height: 800px;
 
     in property <bool> open: false;            // drives open/close animations
     in property <float> dim: 0.28;
@@ -102,11 +104,12 @@ export component RingWindow inherits Window {
         width: 100%;
         height: 100%;
         mouse-cursor: pointer;
-        moved => {
-            root.pointer-moved(self.mouse-x, self.mouse-y);
-        }
+        // NOTE: TouchArea.moved only fires while pressed; hover tracking
+        // must use pointer-event's move kind.
         pointer-event(e) => {
-            if (e.kind == PointerEventKind.down) {
+            if (e.kind == PointerEventKind.move) {
+                root.pointer-moved(self.mouse-x, self.mouse-y);
+            } else if (e.kind == PointerEventKind.down) {
                 root.pointer-down(self.mouse-x, self.mouse-y, e.button == PointerEventButton.right);
             } else if (e.kind == PointerEventKind.up) {
                 root.pointer-up(self.mouse-x, self.mouse-y, e.button == PointerEventButton.right);
@@ -199,6 +202,7 @@ export component SettingsWindow inherits Window {
     callback set-shortcut <=> ed.set-shortcut;
     callback reset-settings <=> ed.reset-settings;
     callback close-requested <=> ed.close-requested;
+    pure callback name-matches <=> ed.name-matches;
 
     HorizontalLayout {
         padding: 18px;
@@ -231,5 +235,40 @@ export component SettingsWindow inherits Window {
         }
 
         ed := Editor { }
+    }
+}
+
+// System tray (StatusNotifierItem via ksni on Linux, native elsewhere).
+// Replaces the old python tray.py helper.
+export component Tray inherits SystemTrayIcon {
+    icon: @image-url("../launcher/RadiAll.png");
+    tooltip: "RadiAll";
+
+    // "apps" | "windows" | "actions" | "settings" | "quit"
+    callback command(string);
+
+    Menu {
+        MenuItem {
+            title: "Apps ring";
+            activated => { root.command("apps"); }
+        }
+        MenuItem {
+            title: "Windows ring";
+            activated => { root.command("windows"); }
+        }
+        MenuItem {
+            title: "Focus actions";
+            activated => { root.command("actions"); }
+        }
+        MenuSeparator { }
+        MenuItem {
+            title: "Settings…";
+            activated => { root.command("settings"); }
+        }
+        MenuSeparator { }
+        MenuItem {
+            title: "Quit RadiAll";
+            activated => { root.command("quit"); }
+        }
     }
 }

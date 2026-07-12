@@ -1,8 +1,392 @@
-// Settings editor (Apps + Look tabs). STUB — implementation pending.
-// The contract below is what src/ui.rs wires; keep signatures stable.
+// Settings editor (Apps + Look tabs).
+// The contract (in-properties + callbacks below) is what src/ui.rs wires; keep
+// signatures stable. Everything else is private implementation.
+//
+// Slint-1.17 limitations honored here (see yield notes):
+//  - no string substring/split -> installed-list filtering goes through the
+//    pure `name-matches` callback (default handler shows all rows when the
+//    Rust side leaves it unwired);
+//  - shortcut combos captured in-session render pretty ("Ctrl + Shift + R"),
+//    combos loaded from disk render raw ("ctrl+shift+r").
 
+import { ListView, ScrollView } from "std-widgets.slint";
 import { Skin } from "skin.slint";
 import { AppRow, ActionRow, InstalledRow } from "types.slint";
+
+// ---------------------------------------------------------------- controls --
+
+component GroupHead inherits Text {
+    color: Skin.fg-dim;
+    font-size: Skin.s(10);
+    font-weight: 600;
+    letter-spacing: Skin.s(1.5);
+}
+
+// Text input pill. Emits edited(text) on every user keystroke. External model
+// updates are applied only while the field is unfocused, so typing never gets
+// clobbered by the Rust round-trip.
+component Field inherits Rectangle {
+    in property <string> value;
+    in property <string> placeholder;
+    callback edited(string);
+
+    height: Skin.s(30);
+    min-width: Skin.s(60);
+    border-radius: Skin.s(8);
+    background: Skin.tint(0.06);
+    border-width: 1px;
+    border-color: ti.has-focus ? Skin.accent : Skin.tint(0.08);
+
+    changed value => {
+        if (!ti.has-focus) {
+            ti.text = self.value;
+        }
+    }
+
+    ti := TextInput {
+        x: Skin.s(10);
+        width: parent.width - Skin.s(20);
+        height: parent.height;
+        vertical-alignment: center;
+        single-line: true;
+        text: root.value;
+        color: Skin.fg;
+        font-size: Skin.s(12);
+        edited => {
+            root.edited(self.text);
+        }
+    }
+    Text {
+        x: Skin.s(10);
+        width: parent.width - Skin.s(20);
+        height: parent.height;
+        vertical-alignment: center;
+        visible: ti.text == "" && !ti.has-focus;
+        text: root.placeholder;
+        color: Skin.fg-dim;
+        font-size: Skin.s(12);
+    }
+}
+
+component PillBtn inherits Rectangle {
+    in property <string> text;
+    in property <bool> accent: false;
+    callback clicked;
+
+    height: Skin.s(32);
+    min-width: txt.preferred-width + Skin.s(24);
+    border-radius: Skin.s(9);
+    background: root.accent
+        ? (ta.has-hover ? Skin.accent.brighter(0.15) : Skin.accent)
+        : (ta.has-hover ? Skin.tint(0.12) : Skin.tint(0.06));
+    animate background { duration: 100ms; }
+
+    txt := Text {
+        width: 100%;
+        height: 100%;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        text: root.text;
+        color: root.accent ? #ffffff : Skin.fg;
+        font-size: Skin.s(13);
+        font-weight: 500;
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+component IconBtn inherits Rectangle {
+    in property <string> glyph;
+    in property <bool> enabled: true;
+    callback clicked;
+
+    width: Skin.s(28);
+    height: Skin.s(28);
+    border-radius: Skin.s(7);
+    background: ta.has-hover && root.enabled ? Skin.tint(0.14) : Skin.tint(0.06);
+    opacity: root.enabled ? 1 : 0.3;
+
+    Text {
+        width: 100%;
+        height: 100%;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        text: root.glyph;
+        color: Skin.fg;
+        font-size: Skin.s(13);
+    }
+    ta := TouchArea {
+        mouse-cursor: root.enabled ? MouseCursor.pointer : MouseCursor.default;
+        clicked => {
+            if (root.enabled) {
+                root.clicked();
+            }
+        }
+    }
+}
+
+component Toggle inherits Rectangle {
+    in property <bool> on;
+    callback toggled(bool);
+
+    width: Skin.s(42);
+    height: Skin.s(24);
+    border-radius: self.height / 2;
+    background: root.on ? Skin.accent : Skin.tint(0.15);
+    animate background { duration: 120ms; }
+
+    Rectangle {
+        width: parent.height - Skin.s(4);
+        height: parent.height - Skin.s(4);
+        border-radius: self.height / 2;
+        background: #ffffff;
+        x: root.on ? parent.width - self.width - Skin.s(2) : Skin.s(2);
+        y: Skin.s(2);
+        animate x { duration: 130ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    }
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.toggled(!root.on);
+        }
+    }
+}
+
+// Horizontal slider: track + accent fill + white handle. Emits moved(v) live
+// on press and drag, snapped to `step` and clamped to [minimum, maximum].
+component HSlider inherits Rectangle {
+    in property <float> minimum: 0;
+    in property <float> maximum: 1;
+    in property <float> step: 1;
+    in property <float> value: 0;
+    callback moved(float);
+
+    // live value: internal drag position while pressed, model value otherwise
+    out property <float> live: ta.pressed
+        ? self.drag-val
+        : Math.clamp(root.value, root.minimum, root.maximum);
+
+    private property <float> drag-val: root.value;
+    private property <float> frac: (self.live - root.minimum) / (root.maximum - root.minimum);
+
+    height: Skin.s(18);
+    min-width: Skin.s(120);
+    horizontal-stretch: 1;
+
+    pure function snap(mx: length) -> float {
+        return Math.clamp(
+            root.minimum + Math.round(
+                Math.clamp((mx - Skin.s(8)) / Math.max(root.width - Skin.s(16), 1px), 0, 1)
+                    * (root.maximum - root.minimum) / root.step
+            ) * root.step,
+            root.minimum, root.maximum);
+    }
+
+    track := Rectangle {
+        x: 0;
+        y: (parent.height - self.height) / 2;
+        width: parent.width;
+        height: Skin.s(4);
+        border-radius: self.height / 2;
+        background: Skin.tint(0.14);
+    }
+    Rectangle {
+        x: 0;
+        y: track.y;
+        height: track.height;
+        width: Skin.s(8) + root.frac * (parent.width - Skin.s(16));
+        border-radius: track.border-radius;
+        background: Skin.accent;
+    }
+    Rectangle {
+        width: Skin.s(16);
+        height: Skin.s(16);
+        border-radius: self.width / 2;
+        x: root.frac * (parent.width - self.width);
+        y: (parent.height - self.height) / 2;
+        background: #ffffff;
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) {
+                root.drag-val = root.snap(self.mouse-x);
+                root.moved(root.drag-val);
+            }
+        }
+        moved => {
+            root.drag-val = root.snap(self.mouse-x);
+            root.moved(root.drag-val);
+        }
+    }
+}
+
+// Key-combo capture cell. Click -> focused recording state; first non-modifier
+// key press is encoded (lowercase, '+'-joined, modifier order ctrl,alt,shift,
+// super) and emitted via captured(). Escape or focus loss cancels.
+component ShortcutRecorder inherits Rectangle {
+    in property <string> value;
+    callback captured(string);
+
+    private property <bool> recording: false;
+    private property <string> scratch;        // encoded key of current event
+    private property <string> last-captured;  // combo captured this session…
+    private property <string> last-pretty;    // …and its pretty rendering
+
+    width: Skin.s(150);
+    height: Skin.s(30);
+    border-radius: Skin.s(8);
+    background: self.recording ? Skin.tint(0.14) : Skin.tint(0.06);
+    border-width: 1px;
+    border-color: self.recording ? Skin.accent : Skin.tint(0.08);
+
+    // Slint Key code / char -> Hyprland keysym name ("" = ignore, keep waiting)
+    pure function enc-key(t: string) -> string {
+        if (t == Key.Control || t == Key.ControlR || t == Key.Shift || t == Key.ShiftR
+            || t == Key.Alt || t == Key.AltGr || t == Key.Meta || t == Key.MetaR
+            || t == Key.CapsLock) { return ""; }
+        if (t == Key.Return) { return "return"; }
+        if (t == Key.Space) { return "space"; }
+        if (t == Key.Tab || t == Key.Backtab) { return "tab"; }
+        if (t == Key.Backspace) { return "backspace"; }
+        if (t == Key.Delete) { return "delete"; }
+        if (t == Key.Home) { return "home"; }
+        if (t == Key.End) { return "end"; }
+        if (t == Key.PageUp) { return "prior"; }
+        if (t == Key.PageDown) { return "next"; }
+        if (t == Key.LeftArrow) { return "left"; }
+        if (t == Key.RightArrow) { return "right"; }
+        if (t == Key.UpArrow) { return "up"; }
+        if (t == Key.DownArrow) { return "down"; }
+        if (t == Key.F1) { return "F1"; }
+        if (t == Key.F2) { return "F2"; }
+        if (t == Key.F3) { return "F3"; }
+        if (t == Key.F4) { return "F4"; }
+        if (t == Key.F5) { return "F5"; }
+        if (t == Key.F6) { return "F6"; }
+        if (t == Key.F7) { return "F7"; }
+        if (t == Key.F8) { return "F8"; }
+        if (t == Key.F9) { return "F9"; }
+        if (t == Key.F10) { return "F10"; }
+        if (t == Key.F11) { return "F11"; }
+        if (t == Key.F12) { return "F12"; }
+        if (t == ",") { return "comma"; }
+        if (t == ".") { return "period"; }
+        if (t == "/") { return "slash"; }
+        if (t == ";") { return "semicolon"; }
+        if (t == "-") { return "minus"; }
+        if (t == "=") { return "equal"; }
+        if (t == Key.Insert || t == Key.ScrollLock || t == Key.Pause
+            || t == Key.SysReq || t == Key.Stop || t == Key.Menu
+            || t == Key.Escape) { return ""; }
+        if (t.character-count == 1) { return t.to-lowercase(); }
+        return "";
+    }
+
+    pure function pretty-key(k: string) -> string {
+        if (k.character-count == 1) { return k.to-uppercase(); }
+        if (k == "return") { return "Return"; }
+        if (k == "space") { return "Space"; }
+        if (k == "tab") { return "Tab"; }
+        if (k == "backspace") { return "Backspace"; }
+        if (k == "delete") { return "Delete"; }
+        if (k == "home") { return "Home"; }
+        if (k == "end") { return "End"; }
+        if (k == "prior") { return "PgUp"; }
+        if (k == "next") { return "PgDn"; }
+        if (k == "left") { return "Left"; }
+        if (k == "right") { return "Right"; }
+        if (k == "up") { return "Up"; }
+        if (k == "down") { return "Down"; }
+        if (k == "comma") { return "Comma"; }
+        if (k == "period") { return "Period"; }
+        if (k == "slash") { return "Slash"; }
+        if (k == "semicolon") { return "Semicolon"; }
+        if (k == "minus") { return "Minus"; }
+        if (k == "equal") { return "Equal"; }
+        return k;
+    }
+
+    Text {
+        width: 100%;
+        height: 100%;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        overflow: elide;
+        text: root.recording ? "Press keys…"
+            : root.value == "" ? "Click to set"
+            : (root.value == root.last-captured ? root.last-pretty : root.value);
+        color: root.recording || root.value != "" ? Skin.fg : Skin.fg-dim;
+        font-size: Skin.s(12);
+    }
+
+    fs := FocusScope {
+        width: 100%;
+        height: 100%;
+        changed has-focus => {
+            if (!self.has-focus) {
+                root.recording = false;
+            }
+        }
+        key-pressed(event) => {
+            if (!root.recording) {
+                return reject;
+            }
+            if (event.text == Key.Escape) {
+                root.recording = false;
+                return accept;
+            }
+            root.scratch = root.enc-key(event.text);
+            if (root.scratch == "") {
+                return accept; // lone modifier / unmappable: keep waiting
+            }
+            root.last-captured =
+                (event.modifiers.control ? "ctrl+" : "")
+                + (event.modifiers.alt ? "alt+" : "")
+                + (event.modifiers.shift ? "shift+" : "")
+                + (event.modifiers.meta ? "super+" : "")
+                + root.scratch;
+            root.last-pretty =
+                (event.modifiers.control ? "Ctrl + " : "")
+                + (event.modifiers.alt ? "Alt + " : "")
+                + (event.modifiers.shift ? "Shift + " : "")
+                + (event.modifiers.meta ? "Super + " : "")
+                + root.pretty-key(root.scratch);
+            root.recording = false;
+            root.captured(root.last-captured);
+            return accept;
+        }
+    }
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.recording = true;
+            fs.focus();
+        }
+    }
+}
+
+// Row with a fixed-width leading label.
+component SettingRow inherits HorizontalLayout {
+    in property <string> label;
+    in property <length> label-width: Skin.s(120);
+    spacing: Skin.s(12);
+    Text {
+        width: root.label-width;
+        text: root.label;
+        color: Skin.fg;
+        font-size: Skin.s(13);
+        vertical-alignment: center;
+        overflow: elide;
+    }
+    @children
+}
+
+// ------------------------------------------------------------------ editor --
 
 export component Editor {
     // ---- models (owned + refreshed by Rust) ----
@@ -48,8 +432,901 @@ export component Editor {
     callback reset-settings();
     callback close-requested();
 
-    // STUB body.
-    Rectangle {
+    // Case-insensitive substring test for the installed-app filter (Slint has
+    // no string `contains`). Rust wires this; the default handler disables
+    // filtering gracefully (every row matches).
+    pure callback name-matches(string /* name */, string /* query */) -> bool;
+    name-matches(n, q) => {
+        true
+    }
+
+    // ---- private state ----
+    private property <int> cur-tab: 0;             // 0 = Apps, 1 = Look
+    private property <bool> picking: false;        // installed-app picker overlay
+    private property <string> pick-filter: "";
+    private property <bool> sel-ok: root.selected-app >= 0 && root.selected-app < root.apps.length;
+
+    // custom-action color swatches (parallel arrays; "" = theme default)
+    private property <[color]>  action-cols: [#e44854, #0a84ff, #ffd60a, #30d158, #ff9f0a, #bf5af2, #64d2ff, #00000000];
+    private property <[string]> action-hex:  ["#e44854", "#0a84ff", "#ffd60a", "#30d158", "#ff9f0a", "#bf5af2", "#64d2ff", ""];
+    // Look-tab presets
+    private property <[color]>  accent-cols: [#e44854, #0a84ff, #5e5ce6, #bf5af2, #ff9f0a, #30d158, #64d2ff, #ff2d55];
+    private property <[string]> accent-hexes: ["#e44854", "#0a84ff", "#5e5ce6", "#bf5af2", "#ff9f0a", "#30d158", "#64d2ff", "#ff2d55"];
+    private property <[color]>  bg-cols: [#0b0b0d, #1c1c22, #2b2b30, #46464f, #c9d8ef, #dbe4f2, #e8e3d5, #ffffff];
+    private property <[string]> bg-hexes: ["#0b0b0d", "#1c1c22", "#2b2b30", "#46464f", "#c9d8ef", "#dbe4f2", "#e8e3d5", "#ffffff"];
+
+    min-width: Skin.s(480);
+    horizontal-stretch: 1;
+    vertical-stretch: 1;
+
+    // focus sink: steals keyboard focus from text fields before selection
+    // changes so external model updates can refresh them (see Field).
+    blur := FocusScope {
+        width: 0;
+        height: 0;
+    }
+
+    panel := Rectangle {
+        border-radius: Skin.s(20);
         background: Skin.panel-bg;
+        border-width: 1px;
+        border-color: Skin.tint(0.10);
+
+        VerticalLayout {
+            padding: Skin.s(16);
+            spacing: Skin.s(12);
+
+            // ------------------------------------------------- header: tabs
+            HorizontalLayout {
+                Rectangle {
+                    width: Skin.s(148);
+                    height: Skin.s(34);
+                    border-radius: Skin.s(9);
+                    background: Skin.tint(0.06);
+                    HorizontalLayout {
+                        padding: Skin.s(4);
+                        for tab-label[t-idx] in ["Apps", "Look"]: Rectangle {
+                            width: Skin.s(70);
+                            border-radius: Skin.s(7);
+                            background: root.cur-tab == t-idx ? Skin.accent : transparent;
+                            animate background { duration: 130ms; }
+                            Text {
+                                width: 100%;
+                                height: 100%;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                text: tab-label;
+                                color: root.cur-tab == t-idx ? #ffffff : Skin.fg;
+                                font-size: Skin.s(12);
+                                font-weight: 500;
+                            }
+                            TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    blur.focus();
+                                    root.cur-tab = t-idx;
+                                }
+                            }
+                        }
+                    }
+                }
+                Rectangle { } // spacer
+            }
+
+            // ------------------------------------------------------ content
+            Rectangle {
+                vertical-stretch: 1;
+
+                // ================================================= APPS tab
+                HorizontalLayout {
+                    visible: root.cur-tab == 0;
+                    spacing: Skin.s(12);
+
+                    // ---- left: app list + add buttons
+                    VerticalLayout {
+                        width: Skin.s(225);
+                        spacing: Skin.s(8);
+
+                        ListView {
+                            vertical-stretch: 1;
+                            for app[i] in root.apps: Rectangle {
+                                height: Skin.s(46);
+                                Rectangle {
+                                    y: Skin.s(2);
+                                    width: parent.width - Skin.s(6);
+                                    height: Skin.s(42);
+                                    border-radius: Skin.s(10);
+                                    background: i == root.selected-app
+                                        ? Skin.tint(0.09)
+                                        : (app-ta.has-hover ? Skin.tint(0.07) : Skin.tint(0.035));
+                                    border-width: i == root.selected-app ? 1px : 0;
+                                    border-color: Skin.accent;
+                                    HorizontalLayout {
+                                        padding-left: Skin.s(10);
+                                        padding-right: Skin.s(8);
+                                        spacing: Skin.s(8);
+                                        Rectangle {
+                                            width: Skin.s(26);
+                                            if app.has-icon: Image {
+                                                width: Skin.s(26);
+                                                height: Skin.s(26);
+                                                y: (parent.height - self.height) / 2;
+                                                source: app.icon;
+                                                image-fit: contain;
+                                            }
+                                            if !app.has-icon: Rectangle {
+                                                width: Skin.s(26);
+                                                height: Skin.s(26);
+                                                y: (parent.height - self.height) / 2;
+                                                border-radius: Skin.s(6);
+                                                background: Skin.tint(0.10);
+                                            }
+                                        }
+                                        Text {
+                                            text: app.name;
+                                            color: Skin.fg;
+                                            font-size: Skin.s(13);
+                                            vertical-alignment: center;
+                                            overflow: elide;
+                                        }
+                                    }
+                                    app-ta := TouchArea {
+                                        mouse-cursor: pointer;
+                                        clicked => {
+                                            blur.focus();
+                                            root.select-app(i);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        PillBtn {
+                            text: "Add app";
+                            accent: true;
+                            clicked => {
+                                root.add-app();
+                            }
+                        }
+                        PillBtn {
+                            text: "From installed…";
+                            clicked => {
+                                root.pick-filter = "";
+                                root.picking = true;
+                            }
+                        }
+                    }
+
+                    // ---- right: selected-app editor + actions
+                    Rectangle {
+                        background: Skin.tint(0.035);
+                        border-radius: Skin.s(12);
+                        border-width: 1px;
+                        border-color: Skin.tint(0.07);
+
+                        if !root.sel-ok: Text {
+                            width: 100%;
+                            height: 100%;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                            text: root.apps.length == 0
+                                ? "No apps yet — add one on the left"
+                                : "Select an app to edit";
+                            color: Skin.fg-dim;
+                            font-size: Skin.s(13);
+                        }
+
+                        if root.sel-ok: ScrollView {
+                            VerticalLayout {
+                                padding: Skin.s(14);
+                                spacing: Skin.s(9);
+
+                                HorizontalLayout {
+                                    spacing: Skin.s(6);
+                                    GroupHead {
+                                        text: "APP";
+                                        vertical-alignment: center;
+                                        horizontal-stretch: 1;
+                                    }
+                                    IconBtn {
+                                        glyph: "↑";
+                                        enabled: root.selected-app > 0;
+                                        clicked => {
+                                            root.move-app(root.selected-app, -1);
+                                        }
+                                    }
+                                    IconBtn {
+                                        glyph: "↓";
+                                        enabled: root.selected-app < root.apps.length - 1;
+                                        clicked => {
+                                            root.move-app(root.selected-app, 1);
+                                        }
+                                    }
+                                    Rectangle {
+                                        width: 1px;
+                                        height: Skin.s(20);
+                                        y: (parent.height - self.height) / 2;
+                                        background: Skin.tint(0.10);
+                                    }
+                                    IconBtn {
+                                        glyph: "✕";
+                                        clicked => {
+                                            root.remove-app(root.selected-app);
+                                        }
+                                    }
+                                }
+
+                                SettingRow {
+                                    label: "Name";
+                                    label-width: Skin.s(64);
+                                    Field {
+                                        value: root.apps[root.selected-app].name;
+                                        edited(t) => {
+                                            root.set-app-field(root.selected-app, "name", t);
+                                        }
+                                    }
+                                }
+                                SettingRow {
+                                    label: "Icon";
+                                    label-width: Skin.s(64);
+                                    Field {
+                                        value: root.apps[root.selected-app].icon-name;
+                                        placeholder: "icon name or /abs/path";
+                                        edited(t) => {
+                                            root.set-app-field(root.selected-app, "icon", t);
+                                        }
+                                    }
+                                }
+                                SettingRow {
+                                    label: "Command";
+                                    label-width: Skin.s(64);
+                                    Field {
+                                        value: root.apps[root.selected-app].exec;
+                                        placeholder: "command args";
+                                        edited(t) => {
+                                            root.set-app-field(root.selected-app, "exec", t);
+                                        }
+                                    }
+                                }
+                                SettingRow {
+                                    label: "Class";
+                                    label-width: Skin.s(64);
+                                    Field {
+                                        value: root.apps[root.selected-app].wm-class;
+                                        placeholder: "window class";
+                                        edited(t) => {
+                                            root.set-app-field(root.selected-app, "wmClass", t);
+                                        }
+                                    }
+                                }
+
+                                Rectangle { height: Skin.s(4); }
+                                GroupHead { text: "ACTIONS"; }
+
+                                if !root.can-send-keys: Text {
+                                    text: "No key injection on this compositor — key-combo actions launch the app instead.";
+                                    color: Skin.fg-dim;
+                                    font-size: Skin.s(11);
+                                    wrap: word-wrap;
+                                }
+
+                                for a[j] in root.app-actions: Rectangle {
+                                    height: a.is-custom ? Skin.s(154) : Skin.s(44);
+
+                                    Rectangle {
+                                        width: parent.width;
+                                        height: parent.height - Skin.s(4);
+                                        border-radius: Skin.s(8);
+                                        background: Skin.tint(0.05);
+
+                                        // -- template action: glyph + label + toggle
+                                        if !a.is-custom: HorizontalLayout {
+                                            padding-left: Skin.s(10);
+                                            padding-right: Skin.s(10);
+                                            padding-top: (Skin.s(40) - Skin.s(24)) / 2;
+                                            padding-bottom: (Skin.s(40) - Skin.s(24)) / 2;
+                                            spacing: Skin.s(8);
+                                            Text {
+                                                width: Skin.s(22);
+                                                text: a.glyph;
+                                                font-family: Skin.icon-font;
+                                                font-size: Skin.s(15);
+                                                color: Skin.fg;
+                                                vertical-alignment: center;
+                                            }
+                                            Text {
+                                                text: a.label;
+                                                color: Skin.fg;
+                                                font-size: Skin.s(13);
+                                                vertical-alignment: center;
+                                                overflow: elide;
+                                                horizontal-stretch: 1;
+                                            }
+                                            Toggle {
+                                                on: a.enabled;
+                                                toggled(v) => {
+                                                    root.toggle-action(a.id, v);
+                                                }
+                                            }
+                                        }
+
+                                        // -- custom action: label / shortcut / icon / color
+                                        if a.is-custom: VerticalLayout {
+                                            padding: Skin.s(10);
+                                            spacing: Skin.s(8);
+                                            HorizontalLayout {
+                                                spacing: Skin.s(8);
+                                                Text {
+                                                    width: Skin.s(22);
+                                                    text: "\u{f084}";
+                                                    font-family: Skin.icon-font;
+                                                    font-size: Skin.s(14);
+                                                    color: Skin.fg-dim;
+                                                    vertical-alignment: center;
+                                                }
+                                                Field {
+                                                    value: a.label;
+                                                    placeholder: "label";
+                                                    edited(t) => {
+                                                        root.set-custom-field(a.id, "label", t);
+                                                    }
+                                                }
+                                                IconBtn {
+                                                    glyph: "✕";
+                                                    clicked => {
+                                                        root.remove-custom-action(a.id);
+                                                    }
+                                                }
+                                            }
+                                            HorizontalLayout {
+                                                spacing: Skin.s(8);
+                                                ShortcutRecorder {
+                                                    value: a.shortcut;
+                                                    captured(s) => {
+                                                        root.set-custom-field(a.id, "shortcut", s);
+                                                    }
+                                                }
+                                                Field {
+                                                    value: a.icon-name;
+                                                    placeholder: "icon name or /path.svg";
+                                                    edited(t) => {
+                                                        root.set-custom-field(a.id, "icon", t);
+                                                    }
+                                                }
+                                            }
+                                            HorizontalLayout {
+                                                spacing: Skin.s(6);
+                                                alignment: start;
+                                                for chex[k] in root.action-hex: Rectangle {
+                                                    width: Skin.s(22);
+                                                    height: Skin.s(22);
+                                                    border-radius: self.width / 2;
+                                                    background: root.action-cols[k];
+                                                    border-width: a.color.to-lowercase() == chex ? 2px : 1px;
+                                                    border-color: a.color.to-lowercase() == chex
+                                                        ? Skin.tint(0.9)
+                                                        : Skin.tint(0.3);
+                                                    // "" swatch: theme-default hint ring
+                                                    if chex == "": Rectangle {
+                                                        width: Skin.s(8);
+                                                        height: Skin.s(8);
+                                                        x: (parent.width - self.width) / 2;
+                                                        y: (parent.height - self.height) / 2;
+                                                        border-radius: self.width / 2;
+                                                        border-width: 1px;
+                                                        border-color: Skin.tint(0.5);
+                                                    }
+                                                    TouchArea {
+                                                        mouse-cursor: pointer;
+                                                        clicked => {
+                                                            root.set-custom-field(a.id, "color", chex);
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                PillBtn {
+                                    text: "Add custom action";
+                                    clicked => {
+                                        root.add-custom-action();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ================================================= LOOK tab
+                ScrollView {
+                    visible: root.cur-tab == 1;
+
+                    VerticalLayout {
+                        padding: Skin.s(4);
+                        padding-right: Skin.s(12);
+                        spacing: Skin.s(10);
+
+                        GroupHead { text: "THEME"; }
+                        theme-btn := Rectangle {
+                            height: Skin.s(32);
+                            border-radius: Skin.s(8);
+                            background: tb-ta.has-hover ? Skin.tint(0.12) : Skin.tint(0.06);
+                            border-width: 1px;
+                            border-color: Skin.tint(0.10);
+                            HorizontalLayout {
+                                padding-left: Skin.s(12);
+                                padding-right: Skin.s(10);
+                                Text {
+                                    text: root.current-theme == "" ? "default" : root.current-theme;
+                                    color: Skin.fg;
+                                    font-size: Skin.s(13);
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                    horizontal-stretch: 1;
+                                }
+                                Text {
+                                    text: "⌄";
+                                    color: Skin.fg-dim;
+                                    font-size: Skin.s(13);
+                                    vertical-alignment: center;
+                                }
+                            }
+                            tb-ta := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    theme-pop.show();
+                                }
+                            }
+                            theme-pop := PopupWindow {
+                                x: 0;
+                                y: parent.height + Skin.s(4);
+                                width: Math.max(theme-btn.width, Skin.s(150));
+                                height: Math.min(root.themes.length * Skin.s(34) + Skin.s(8), Skin.s(212));
+                                close-policy: PopupClosePolicy.close-on-click-outside;
+                                Rectangle {
+                                    background: Skin.panel-bg;
+                                    border-radius: Skin.s(10);
+                                    border-width: 1px;
+                                    border-color: Skin.tint(0.14);
+                                    ListView {
+                                        x: Skin.s(4);
+                                        y: Skin.s(4);
+                                        width: parent.width - Skin.s(8);
+                                        height: parent.height - Skin.s(8);
+                                        for th[k] in root.themes: Rectangle {
+                                            height: Skin.s(34);
+                                            border-radius: Skin.s(7);
+                                            background: th-ta.has-hover ? Skin.tint(0.08) : transparent;
+                                            HorizontalLayout {
+                                                padding-left: Skin.s(10);
+                                                padding-right: Skin.s(10);
+                                                Text {
+                                                    text: th;
+                                                    color: th == root.current-theme ? Skin.accent : Skin.fg;
+                                                    font-size: Skin.s(13);
+                                                    font-weight: th == root.current-theme ? 600 : 400;
+                                                    vertical-alignment: center;
+                                                    overflow: elide;
+                                                    horizontal-stretch: 1;
+                                                }
+                                                Text {
+                                                    visible: th == root.current-theme;
+                                                    text: "✓";
+                                                    color: Skin.accent;
+                                                    font-size: Skin.s(13);
+                                                    vertical-alignment: center;
+                                                }
+                                            }
+                                            th-ta := TouchArea {
+                                                mouse-cursor: pointer;
+                                                clicked => {
+                                                    root.set-setting("theme", th);
+                                                    theme-pop.close();
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Text {
+                            text: "Accent & background below apply to themes that don't set their own.";
+                            color: Skin.fg-dim;
+                            font-size: Skin.s(11);
+                            wrap: word-wrap;
+                        }
+
+                        Rectangle { height: Skin.s(6); }
+                        GroupHead { text: "COLOURS"; }
+                        SettingRow {
+                            label: "Accent";
+                            label-width: Skin.s(100);
+                            HorizontalLayout {
+                                spacing: Skin.s(6);
+                                alignment: start;
+                                for phex[k] in root.accent-hexes: Rectangle {
+                                    width: Skin.s(22);
+                                    height: Skin.s(22);
+                                    border-radius: self.width / 2;
+                                    background: root.accent-cols[k];
+                                    border-width: root.accent-hex.to-lowercase() == phex ? 3px : 0;
+                                    border-color: Skin.tint(0.9);
+                                    TouchArea {
+                                        mouse-cursor: pointer;
+                                        clicked => {
+                                            root.set-setting("accent", phex);
+                                        }
+                                    }
+                                }
+                            }
+                            Field {
+                                width: Skin.s(90);
+                                value: root.accent-hex;
+                                placeholder: "#rrggbb";
+                                edited(t) => {
+                                    if (t.character-count == 7) {
+                                        root.set-setting("accent", t.to-lowercase());
+                                    }
+                                }
+                            }
+                        }
+                        SettingRow {
+                            label: "Background";
+                            label-width: Skin.s(100);
+                            HorizontalLayout {
+                                spacing: Skin.s(6);
+                                alignment: start;
+                                for phex[k] in root.bg-hexes: Rectangle {
+                                    width: Skin.s(22);
+                                    height: Skin.s(22);
+                                    border-radius: self.width / 2;
+                                    background: root.bg-cols[k];
+                                    border-width: root.bg-hex.to-lowercase() == phex ? 3px : 1px;
+                                    border-color: root.bg-hex.to-lowercase() == phex
+                                        ? Skin.tint(0.9)
+                                        : Skin.tint(0.2);
+                                    TouchArea {
+                                        mouse-cursor: pointer;
+                                        clicked => {
+                                            root.set-setting("bg", phex);
+                                        }
+                                    }
+                                }
+                            }
+                            Field {
+                                width: Skin.s(90);
+                                value: root.bg-hex;
+                                placeholder: "#rrggbb";
+                                edited(t) => {
+                                    if (t.character-count == 7) {
+                                        root.set-setting("bg", t.to-lowercase());
+                                    }
+                                }
+                            }
+                        }
+
+                        Rectangle { height: Skin.s(6); }
+                        GroupHead { text: "WHEEL"; }
+                        SettingRow {
+                            label: "Icon size";
+                            sl-icon := HSlider {
+                                minimum: 36;
+                                maximum: 80;
+                                step: 1;
+                                value: root.icon-size;
+                                moved(v) => {
+                                    root.set-setting("iconSize", "\{Math.round(v)}");
+                                }
+                            }
+                            Text {
+                                width: Skin.s(44);
+                                text: "\{Math.round(sl-icon.live)}px";
+                                color: Skin.fg-dim;
+                                font-size: Skin.s(12);
+                                vertical-alignment: center;
+                                horizontal-alignment: right;
+                            }
+                        }
+                        SettingRow {
+                            label: "Ring size";
+                            sl-ring := HSlider {
+                                minimum: 110;
+                                maximum: 240;
+                                step: 1;
+                                value: root.ring-radius;
+                                moved(v) => {
+                                    root.set-setting("ringRadius", "\{Math.round(v)}");
+                                }
+                            }
+                            Text {
+                                width: Skin.s(44);
+                                text: "\{Math.round(sl-ring.live)}px";
+                                color: Skin.fg-dim;
+                                font-size: Skin.s(12);
+                                vertical-alignment: center;
+                                horizontal-alignment: right;
+                            }
+                        }
+                        SettingRow {
+                            label: "Backdrop dim";
+                            sl-dim := HSlider {
+                                minimum: 0;
+                                maximum: 0.6;
+                                step: 0.01;
+                                value: root.dim;
+                                moved(v) => {
+                                    root.set-setting("dim", "\{Math.round(v * 100) / 100}");
+                                }
+                            }
+                            Text {
+                                width: Skin.s(44);
+                                text: "\{Math.round(sl-dim.live * 100)}%";
+                                color: Skin.fg-dim;
+                                font-size: Skin.s(12);
+                                vertical-alignment: center;
+                                horizontal-alignment: right;
+                            }
+                        }
+                        SettingRow {
+                            label: "Wheel opacity";
+                            sl-op := HSlider {
+                                minimum: 0.5;
+                                maximum: 1;
+                                step: 0.01;
+                                value: root.wheel-opacity;
+                                moved(v) => {
+                                    root.set-setting("wheelOpacity", "\{Math.round(v * 100) / 100}");
+                                }
+                            }
+                            Text {
+                                width: Skin.s(44);
+                                text: "\{Math.round(sl-op.live * 100)}%";
+                                color: Skin.fg-dim;
+                                font-size: Skin.s(12);
+                                vertical-alignment: center;
+                                horizontal-alignment: right;
+                            }
+                        }
+
+                        Rectangle { height: Skin.s(6); }
+                        GroupHead { text: "BEHAVIOUR"; }
+                        SettingRow {
+                            label: "Show labels";
+                            label-width: Skin.s(150);
+                            Toggle {
+                                on: root.show-labels;
+                                toggled(v) => {
+                                    root.set-setting("showLabels", v ? "true" : "false");
+                                }
+                            }
+                            Rectangle { }
+                        }
+                        SettingRow {
+                            label: "Follow cursor";
+                            label-width: Skin.s(150);
+                            Toggle {
+                                on: root.follow-outside;
+                                toggled(v) => {
+                                    root.set-setting("followOutside", v ? "true" : "false");
+                                }
+                            }
+                            Rectangle { }
+                        }
+                        Text {
+                            text: "Accent sector keeps tracking the cursor outside the ring.";
+                            color: Skin.fg-dim;
+                            font-size: Skin.s(11);
+                            wrap: word-wrap;
+                        }
+
+                        Rectangle { height: Skin.s(6); }
+                        GroupHead { text: "RING SHORTCUTS"; }
+
+                        if !root.can-manage-keybinds: VerticalLayout {
+                            spacing: Skin.s(6);
+                            Text {
+                                text: "Your compositor has no global-shortcut API RadiAll can drive. Bind these commands in your compositor config instead — they reach the running instance:";
+                                color: Skin.fg-dim;
+                                font-size: Skin.s(12);
+                                wrap: word-wrap;
+                            }
+                            Text {
+                                text: "radiall --apps\nradiall --windows\nradiall --actions";
+                                color: Skin.fg;
+                                font-family: Skin.mono-font;
+                                font-size: Skin.s(12);
+                            }
+                        }
+
+                        if root.can-manage-keybinds: VerticalLayout {
+                            spacing: Skin.s(10);
+                            SettingRow {
+                                label: "Enabled";
+                                label-width: Skin.s(150);
+                                Toggle {
+                                    on: root.shortcuts-enabled;
+                                    toggled(v) => {
+                                        root.set-setting("shortcutsEnabled", v ? "true" : "false");
+                                    }
+                                }
+                                Rectangle { }
+                            }
+                            if !root.shortcuts-enabled: Text {
+                                text: "Off — RadiAll grabs no keys.";
+                                color: Skin.fg-dim;
+                                font-size: Skin.s(11);
+                                wrap: word-wrap;
+                            }
+                            if root.shortcuts-enabled: VerticalLayout {
+                                spacing: Skin.s(10);
+                                SettingRow {
+                                    label: "Bind in Hyprland";
+                                    label-width: Skin.s(150);
+                                    Toggle {
+                                        on: root.persist-binds;
+                                        toggled(v) => {
+                                            root.set-setting("persistBinds", v ? "true" : "false");
+                                        }
+                                    }
+                                    Rectangle { }
+                                }
+                                Text {
+                                    text: root.persist-binds
+                                        ? "Keys are written to ~/.config/hypr/launcher-binds.conf and survive reloads."
+                                        : "Keys are applied live via hyprctl — your Hyprland config is left untouched.";
+                                    color: Skin.fg-dim;
+                                    font-size: Skin.s(11);
+                                    wrap: word-wrap;
+                                }
+                                SettingRow {
+                                    label: "Apps ring";
+                                    label-width: Skin.s(110);
+                                    ShortcutRecorder {
+                                        value: root.sc-apps;
+                                        captured(s) => {
+                                            root.set-shortcut("apps", s);
+                                        }
+                                    }
+                                    Rectangle { }
+                                }
+                                SettingRow {
+                                    label: "Windows ring";
+                                    label-width: Skin.s(110);
+                                    ShortcutRecorder {
+                                        value: root.sc-windows;
+                                        captured(s) => {
+                                            root.set-shortcut("windows", s);
+                                        }
+                                    }
+                                    Rectangle { }
+                                }
+                                SettingRow {
+                                    label: "Actions ring";
+                                    label-width: Skin.s(110);
+                                    ShortcutRecorder {
+                                        value: root.sc-actions;
+                                        captured(s) => {
+                                            root.set-shortcut("actions", s);
+                                        }
+                                    }
+                                    Rectangle { }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ------------------------------------------------------- footer
+            HorizontalLayout {
+                spacing: Skin.s(8);
+                PillBtn {
+                    text: "Reset settings";
+                    clicked => {
+                        root.reset-settings();
+                    }
+                }
+                Rectangle { } // spacer
+                PillBtn {
+                    text: "Done";
+                    accent: true;
+                    min-width: Skin.s(66);
+                    clicked => {
+                        root.close-requested();
+                    }
+                }
+            }
+        }
+    }
+
+    // ------------------------------------------- installed-app picker overlay
+    if root.picking: Rectangle {
+        border-radius: Skin.s(20);
+        background: Skin.panel-bg;
+        border-width: 1px;
+        border-color: Skin.tint(0.10);
+
+        TouchArea { } // swallow clicks under the overlay
+
+        VerticalLayout {
+            padding: Skin.s(16);
+            spacing: Skin.s(10);
+
+            HorizontalLayout {
+                spacing: Skin.s(8);
+                IconBtn {
+                    glyph: "‹";
+                    clicked => {
+                        root.picking = false;
+                    }
+                }
+                Text {
+                    text: "Add an app";
+                    font-family: Skin.font-display;
+                    font-size: Skin.s(17);
+                    font-weight: 600;
+                    color: Skin.fg-strong;
+                    vertical-alignment: center;
+                }
+            }
+
+            Field {
+                value: "";
+                placeholder: "Search installed apps…";
+                edited(t) => {
+                    root.pick-filter = t.to-lowercase();
+                }
+            }
+
+            ListView {
+                vertical-stretch: 1;
+                for entry[k] in root.installed: Rectangle {
+                    property <bool> hit: root.pick-filter == ""
+                        || root.name-matches(entry.name, root.pick-filter);
+                    height: self.hit ? Skin.s(40) : 0;
+                    visible: self.hit;
+                    border-radius: Skin.s(8);
+                    background: inst-ta.has-hover ? Skin.tint(0.10) : transparent;
+                    HorizontalLayout {
+                        padding-left: Skin.s(10);
+                        padding-right: Skin.s(12);
+                        spacing: Skin.s(10);
+                        Rectangle {
+                            width: Skin.s(26);
+                            if entry.has-icon: Image {
+                                width: Skin.s(26);
+                                height: Skin.s(26);
+                                y: (parent.height - self.height) / 2;
+                                source: entry.icon;
+                                image-fit: contain;
+                            }
+                        }
+                        Text {
+                            text: entry.name;
+                            color: Skin.fg;
+                            font-size: Skin.s(13);
+                            vertical-alignment: center;
+                            overflow: elide;
+                            horizontal-stretch: 1;
+                        }
+                        Text {
+                            text: "+";
+                            color: Skin.fg-dim;
+                            font-size: Skin.s(14);
+                            vertical-alignment: center;
+                        }
+                    }
+                    inst-ta := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.add-installed(k);
+                            root.picking = false;
+                        }
+                    }
+                }
+            }
+        }
     }
 }

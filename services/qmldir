@@ -1,3 +1,0 @@
-singleton Skin Skin.qml
-singleton Launcher Launcher.qml
-singleton Compositor Compositor.qml

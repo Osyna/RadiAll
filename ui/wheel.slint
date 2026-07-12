@@ -1,6 +1,10 @@
 // The radial wheel + per-app action arc. Pure rendering: every piece of
 // interaction state (hover, rotation, labels, arc contents) is computed in
-// Rust and pushed through the properties below. STUB — visuals pending.
+// Rust and pushed through the properties below.
+//
+// Screen coords: +y down, angle 0deg = +x (right), -90deg = straight up;
+// ring indices increase clockwise from the top. All drawn geometry is
+// multiplied by `pop` (open animation, scales about the wheel center).
 
 import { Skin } from "skin.slint";
 import { RingItem, ArcItem } from "types.slint";
@@ -33,20 +37,235 @@ export component Wheel {
     width: 2 * root.outer-r;
     height: 2 * root.outer-r;
 
-    // STUB rendering: band + hole only.
-    Rectangle {
+    // ---- derived (all divisions guarded against items = []) ----
+    private property <int> count: root.items.length;
+    private property <angle> seg-ang: 360deg / Math.max(root.count, 1);
+    private property <float> cxf: root.outer-r / 1px;                 // center, px
+    private property <float> for-: root.outer-r / 1px * root.pop;     // outer radius, popped
+    private property <float> fir: root.inner-r / 1px * root.pop;      // inner radius, popped
+
+    // cell-shading (theme `edge` set) changes wedge inset + stroke width
+    private property <bool> cell-edge: Skin.edge.alpha > 0;
+    private property <float> sec-inset: root.cell-edge
+        ? (Skin.s(Skin.edge-width) / 1px) / 2
+        : root.sw / 2 + 3;
+    private property <float> sro: (root.outer-r / 1px - root.sec-inset) * root.pop;
+    private property <float> sri: (root.inner-r / 1px + root.sec-inset) * root.pop;
+    private property <color> sector-c: Skin.accent.mix(#ffffff, 0.96); // 4% toward white
+
+    // wedge rotation: fixed top wedge rotated by the Rust-side shortest-path
+    // accumulator; animated here (Path has no rotation-angle in Slint 1.17,
+    // so the rotation is baked into the arc coordinates).
+    private property <float> rot: root.sector-rotation;
+    animate rot { duration: 160ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    private property <angle> wspan: root.count <= 1 ? 359.9deg : root.seg-ang;
+    private property <angle> wa0: -90deg - root.wspan / 2 + root.rot * 1deg;
+    private property <angle> wa1: -90deg + root.wspan / 2 + root.rot * 1deg;
+
+    // rim circles sit half a line-width inside/outside the band edges
+    private property <float> rimw: Skin.rim-width * root.pop;
+    private property <float> rro: root.for- - root.rimw / 2;
+    private property <float> rri: root.fir + root.rimw / 2;
+
+    private property <bool> pill-on: Skin.show-labels
+        && root.center-label != "" && !root.show-settings-btn;
+
+    // ---- 1. donut band (even-odd punches the hole) ----
+    Path {
         width: 100%;
         height: 100%;
-        border-radius: self.width / 2;
-        background: Skin.bg.with-alpha(Skin.wheel-opacity);
+        viewbox-width: self.width / 1px;
+        viewbox-height: self.height / 1px;
+        fill: Skin.bg.with-alpha(Skin.wheel-opacity);
+        fill-rule: evenodd;
+        MoveTo { x: root.cxf - root.for-; y: root.cxf; }
+        ArcTo { x: root.cxf + root.for-; y: root.cxf; radius-x: root.for-; radius-y: root.for-; sweep: true; }
+        ArcTo { x: root.cxf - root.for-; y: root.cxf; radius-x: root.for-; radius-y: root.for-; sweep: true; }
+        Close { }
+        MoveTo { x: root.cxf - root.fir; y: root.cxf; }
+        ArcTo { x: root.cxf + root.fir; y: root.cxf; radius-x: root.fir; radius-y: root.fir; sweep: true; }
+        ArcTo { x: root.cxf - root.fir; y: root.cxf; radius-x: root.fir; radius-y: root.fir; sweep: true; }
+        Close { }
     }
+
+    // ---- 2. accent sector wedge (annular sector, rounded sw-wide stroke) ----
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: self.width / 1px;
+        viewbox-height: self.height / 1px;
+        fill: root.sector-c;
+        stroke: root.sector-c;
+        stroke-width: (root.cell-edge ? 1.0 : root.sw) * root.pop * 1px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+        opacity: root.hovered-index >= 0 && root.count > 0 ? 1 : 0;
+        animate opacity { duration: 110ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        MoveTo { x: root.cxf + root.sro * Math.cos(root.wa0); y: root.cxf + root.sro * Math.sin(root.wa0); }
+        ArcTo {
+            x: root.cxf + root.sro * Math.cos(root.wa1);
+            y: root.cxf + root.sro * Math.sin(root.wa1);
+            radius-x: root.sro;
+            radius-y: root.sro;
+            sweep: true;
+            large-arc: root.wspan > 180deg;
+        }
+        LineTo { x: root.cxf + root.sri * Math.cos(root.wa1); y: root.cxf + root.sri * Math.sin(root.wa1); }
+        ArcTo {
+            x: root.cxf + root.sri * Math.cos(root.wa0);
+            y: root.cxf + root.sri * Math.sin(root.wa0);
+            radius-x: root.sri;
+            radius-y: root.sri;
+            sweep: false;
+            large-arc: root.wspan > 180deg;
+        }
+        Close { }
+    }
+
+    // ---- 3. rim (drawn on top of the sector so the outline is seamless) ----
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: self.width / 1px;
+        viewbox-height: self.height / 1px;
+        fill: transparent;
+        stroke: Skin.rim;                      // color + alpha precomputed in Rust
+        stroke-width: root.rimw * 1px;
+        MoveTo { x: root.cxf - root.rro; y: root.cxf; }
+        ArcTo { x: root.cxf + root.rro; y: root.cxf; radius-x: root.rro; radius-y: root.rro; sweep: true; }
+        ArcTo { x: root.cxf - root.rro; y: root.cxf; radius-x: root.rro; radius-y: root.rro; sweep: true; }
+        Close { }
+        MoveTo { x: root.cxf - root.rri; y: root.cxf; }
+        ArcTo { x: root.cxf + root.rri; y: root.cxf; radius-x: root.rri; radius-y: root.rri; sweep: true; }
+        ArcTo { x: root.cxf - root.rri; y: root.cxf; radius-x: root.rri; radius-y: root.rri; sweep: true; }
+        Close { }
+    }
+
+    // ---- 4. actions-mode focused-app icon (lives in the hole) ----
+    if root.show-focus-icon: Image {
+        source: root.focus-icon;
+        width: root.inner-r * 0.74 * root.pop;
+        height: self.width;
+        x: root.outer-r - self.width / 2;
+        y: root.outer-r - root.inner-r * 0.24 * root.pop - self.height / 2;
+    }
+
+    // ---- 5. settings button (QML z0: under icons/pill, spatially separate) ----
     Rectangle {
-        x: root.outer-r - root.inner-r;
-        y: root.outer-r - root.inner-r;
-        width: 2 * root.inner-r;
-        height: 2 * root.inner-r;
-        border-radius: self.width / 2;
-        background: #000000cc;
+        private property <float> ss: root.show-settings-btn ? 1.0 : 0.6;
+        animate ss { duration: 180ms; easing: cubic-bezier(0.34, 1.56, 0.64, 1); }
+        private property <length> dia: Skin.s(82) * self.ss * root.pop;
+        opacity: root.show-settings-btn ? 1 : 0;
+        animate opacity { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        width: self.dia;
+        height: self.dia;
+        x: root.outer-r - self.dia / 2;
+        y: root.outer-r - self.dia / 2;
+        border-radius: self.dia / 2;
+        background: white;
+        drop-shadow-color: #00000073;          // rgba(0,0,0,0.45)
+        drop-shadow-blur: 16.8px * root.pop;   // shadowBlur 0.7 x blurMax 24
+        drop-shadow-offset-y: 3px;
+        Image {
+            source: root.logo;
+            width: parent.dia * 0.82;
+            height: parent.dia * 0.82;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+        }
+    }
+
+    // ---- 6. icon slots ----
+    for item[i] in root.items: Rectangle {
+        private property <float> hs: root.hovered-index == i ? 1.14 : 1.0;
+        animate hs { duration: 150ms; easing: cubic-bezier(0.34, 1.56, 0.64, 1); }
+        private property <float> k: root.pop * self.hs;   // slot content scale
+        private property <angle> ang: -90deg + i * root.seg-ang;
+        private property <length> box: root.icon-box * self.k;
+        // window-count dots metrics
+        private property <length> dot-d: Skin.s(5) * self.k;
+        private property <length> dot-sp: Skin.s(3) * self.k;
+        private property <length> row-w: item.dot-count * self.dot-d
+            + Math.max(item.dot-count - 1, 0) * self.dot-sp;
+        // icon image height (dots anchor below it)
+        private property <length> img-h: root.icon-box * self.k - Skin.s(10) * self.k;
+
+        width: self.box;
+        height: self.box;
+        x: root.outer-r + root.ring-r * root.pop * Math.cos(self.ang) - self.box / 2;
+        y: root.outer-r + root.ring-r * root.pop * Math.sin(self.ang) - self.box / 2;
+
+        // content priority: icon image -> nerd-font glyph -> monogram
+        if item.has-icon: Image {
+            source: item.icon;
+            colorize: item.is-action && item.tint.alpha > 0 ? item.tint : transparent;
+            width: parent.box - Skin.s(10) * parent.k;
+            height: self.width;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+        }
+        if !item.has-icon && item.glyph != "": Text {
+            text: item.glyph;
+            font-family: Skin.icon-font;
+            font-size: root.icon-box * 0.46 * parent.k;
+            color: Skin.on-band;
+            width: 100%;
+            height: 100%;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+        if !item.has-icon && item.glyph == "": Text {
+            text: item.monogram;
+            font-family: Skin.font-display;
+            font-size: root.icon-box * 0.46 * parent.k;
+            color: Skin.on-band;
+            width: 100%;
+            height: 100%;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+
+        // window-count dots (already capped at 6 by Rust)
+        for d in item.dot-count: Rectangle {
+            private property <float> ds: d == item.sel-dot ? 1.2 : 1.0;
+            animate ds { duration: 120ms; easing: cubic-bezier(0.34, 1.56, 0.64, 1); }
+            width: parent.dot-d * self.ds;
+            height: self.width;
+            border-radius: self.width / 2;
+            background: d == item.sel-dot ? Skin.accent : Skin.dot;
+            x: (parent.width - parent.row-w) / 2
+                + d * (parent.dot-d + parent.dot-sp)
+                + (parent.dot-d - self.width) / 2;
+            y: parent.box / 2 + parent.img-h / 2 + Skin.s(2) * parent.k
+                + (parent.dot-d - self.height) / 2;
+        }
+    }
+
+    // ---- 7. center label pill (topmost) ----
+    Rectangle {
+        private property <float> ps: root.pill-on ? 1.0 : 0.85;
+        animate ps { duration: 160ms; easing: cubic-bezier(0.34, 1.56, 0.64, 1); }
+        private property <float> k: self.ps * root.pop;
+        opacity: root.pill-on ? 1 : 0;
+        animate opacity { duration: 130ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        visible: self.opacity > 0.001;
+        width: ptxt.preferred-width + Skin.s(24) * self.k;
+        height: ptxt.preferred-height + Skin.s(12) * self.k;
+        border-radius: Skin.s(9) * self.k;
+        background: Skin.label-pill-bg;
+        x: root.outer-r - self.width / 2;
+        y: root.outer-r
+            + (root.actions-mode ? root.inner-r * 0.46 * root.pop : 0px)
+            - self.height / 2;
+        ptxt := Text {
+            text: root.center-label;
+            color: Skin.fg-strong;
+            font-family: Skin.font;
+            font-size: Skin.s(14) * parent.k;
+            font-weight: 500;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+        }
     }
 }
 
@@ -67,6 +286,111 @@ export component ActionArc {
 
     width: 2 * root.band-outer;
     height: 2 * root.band-outer;
+    visible: root.open || content.opacity > 0.001;   // alive during fade-out
 
-    // STUB: nothing rendered yet.
+    private property <int> n: root.items.length;
+    private property <int> hov: -1;                  // hovered button index
+    // pop-style open scale, applied to every drawn length (about the center)
+    private property <float> apop: root.open ? 1.0 : 0.9;
+    animate apop { duration: 180ms; easing: cubic-bezier(0.34, 1.56, 0.64, 1); }
+    // buttons spread symmetrically about straight-up, 30deg pitch, 150deg cap
+    private property <float> span: Math.min(150, 30 * Math.max(1, root.n));
+    private property <float> cxf: root.band-outer / 1px;
+    private property <float> fbo: root.band-outer / 1px * root.apop;
+    private property <float> fbi: root.band-inner / 1px * root.apop;
+
+    content := Rectangle {
+        width: 100%;
+        height: 100%;
+        opacity: root.open ? 1 : 0;
+        animate opacity { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+
+        // top half-annulus band (canvas angles pi -> 2pi, flat bottom edge)
+        Path {
+            width: 100%;
+            height: 100%;
+            viewbox-width: self.width / 1px;
+            viewbox-height: self.height / 1px;
+            fill: #141418f7;                 // rgba(20,20,24,0.97)
+            stroke: #ffffff14;               // rgba(255,255,255,0.08)
+            stroke-width: 1px;
+            MoveTo { x: root.cxf - root.fbo; y: root.cxf; }
+            ArcTo { x: root.cxf + root.fbo; y: root.cxf; radius-x: root.fbo; radius-y: root.fbo; sweep: true; }
+            LineTo { x: root.cxf + root.fbi; y: root.cxf; }
+            ArcTo { x: root.cxf - root.fbi; y: root.cxf; radius-x: root.fbi; radius-y: root.fbi; sweep: false; }
+            Close { }
+        }
+
+        // action buttons on the arc
+        for item[i] in root.items: btn := Rectangle {
+            private property <float> bs: bta.has-hover && root.open ? 1.12 : 1.0;
+            animate bs { duration: 130ms; easing: cubic-bezier(0.34, 1.56, 0.64, 1); }
+            private property <angle> ang: (180 + (180 - root.span) / 2
+                + (root.n <= 1 ? root.span / 2 : i * root.span / (root.n - 1))) * 1deg;
+            private property <length> dia: 2 * root.btn-r * root.apop * self.bs;
+
+            width: self.dia;
+            height: self.dia;
+            x: root.band-outer + root.arc-radius * root.apop * Math.cos(self.ang) - self.dia / 2;
+            y: root.band-outer + root.arc-radius * root.apop * Math.sin(self.ang) - self.dia / 2;
+            border-radius: self.dia / 2;
+            background: bta.has-hover && root.open ? Skin.accent : Skin.tint(0.10);
+            animate background { duration: 120ms; }
+
+            bta := TouchArea {
+                enabled: root.open;
+                mouse-cursor: pointer;
+                clicked => {
+                    root.action-clicked(i);
+                }
+                changed has-hover => {
+                    if (self.has-hover) {
+                        root.hov = i;
+                    } else if (root.hov == i) {
+                        root.hov = -1;
+                    }
+                }
+            }
+
+            if item.has-icon: Image {
+                source: item.icon;
+                colorize: item.tint;         // Rust defaults tint to white
+                width: root.btn-r * root.apop * btn.bs;
+                height: self.width;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+            }
+            if !item.has-icon: Text {
+                text: item.glyph;
+                font-family: Skin.icon-font;
+                font-size: Skin.s(18) * root.apop * btn.bs;
+                color: item.tint;
+                width: 100%;
+                height: 100%;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        // label pill above the arc: hovered action's label, else the app name
+        Rectangle {
+            width: atxt.preferred-width + Skin.s(22) * root.apop;
+            height: atxt.preferred-height + Skin.s(10) * root.apop;
+            border-radius: Skin.s(9) * root.apop;
+            background: Skin.label-pill-bg;
+            x: root.band-outer - self.width / 2;
+            y: root.band-outer
+                - (root.arc-radius + root.btn-r + Skin.s(8)) * root.apop
+                - self.height;
+            atxt := Text {
+                text: root.hov >= 0 && root.hov < root.n ? root.items[root.hov].label : root.app-label;
+                color: Skin.fg-strong;
+                font-family: Skin.font;
+                font-size: Skin.s(13) * root.apop;
+                font-weight: 500;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+            }
+        }
+    }
 }

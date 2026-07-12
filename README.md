@@ -6,14 +6,15 @@
 
 **Hold a key, flick at an icon, let go. That's the whole launcher.**
 
-A radial app launcher, window switcher, and per-window action menu for Wayland,
-built on [Quickshell](https://quickshell.org). Hyprland-first, happy on any
-wlroots compositor.
+A radial app launcher, window switcher, and per-window action menu for Linux.
+One standalone Rust binary, rendered with [Slint](https://slint.dev) — no
+shell framework, no QML runtime, no Python. Runs on Hyprland, sway, KDE,
+GNOME, and X11; a Windows port is on the roadmap.
 
 <p>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT license"></a>
-  <a href="https://quickshell.org"><img src="https://img.shields.io/badge/built%20with-Quickshell-a970ff?style=flat-square" alt="Built with Quickshell"></a>
-  <img src="https://img.shields.io/badge/Wayland-Hyprland--first-1793d1?style=flat-square" alt="Wayland, Hyprland-first">
+  <img src="https://img.shields.io/badge/built%20with-Rust%20%2B%20Slint-f74c00?style=flat-square" alt="Built with Rust + Slint">
+  <img src="https://img.shields.io/badge/Wayland%20%26%20X11-Hyprland--first-1793d1?style=flat-square" alt="Wayland and X11, Hyprland-first">
   <img src="https://img.shields.io/badge/made%20for-r%2Funixporn-ff4500?style=flat-square" alt="Made for r/unixporn">
 </p>
 
@@ -24,10 +25,9 @@ wlroots compositor.
 ---
 
 I've always liked the pie menus from old games, and the radial launchers other
-desktops get to have (Splat, Frolt's Radial Menu). Wayland didn't really have
-one, so I built it for my own Hyprland rice. No search box, no typing, no window
-grabbing focus you never gave it. You hold a key, a ring fans out, you throw the
-cursor at what you want. Muscle memory takes over after a day or two.
+desktops get to have. So I built one: no search box, no typing, no window
+grabbing focus you never gave it. You press a key, a ring fans out, you throw
+the cursor at what you want. Muscle memory takes over after a day or two.
 
 Three rings, each on its own shortcut:
 
@@ -39,96 +39,18 @@ All of it is set up from inside the launcher. No dotfile spelunking, no reload.
 
 ## The rings, and everything around them
 
-<table>
-<tr>
-<td width="50%" valign="middle">
-
-### Windows ring
-
-Every open window on one ring, grouped by app. Scroll on an app that has several
-windows to pick which one you land on, with a live thumbnail of what you're
-about to jump to.
-
-</td>
-<td width="50%"><img src="asset/demo/windows_ring.gif" width="100%" alt="Windows ring"></td>
-</tr>
-
-<tr>
-<td width="50%" valign="middle">
-
-### Focus actions
-
-The window you're in, with its actions arced around its icon: close, float,
-fullscreen, whatever the app declares in its `.desktop` file, plus custom
-shortcuts you add yourself.
-
-</td>
-<td width="50%"><img src="asset/demo/actions_ring.gif" width="100%" alt="Focus-actions ring"></td>
-</tr>
-
-<tr>
-<td width="50%" valign="middle">
-
-### Actions, in motion
-
-Long-press an app in the Apps ring and its action arc opens right where it sits.
-Fire one and the ring gets out of the way on its own.
-
-</td>
-<td width="50%"><img src="asset/demo/Actions_demo.gif" width="100%" alt="Using per-app actions"></td>
-</tr>
-
-<tr>
-<td width="50%" valign="middle">
-
-### Roll your own actions
-
-Give any app a custom action with its own icon and colour, bound to a key-combo
-that gets sent straight to that window. Good for the app shortcuts you can never
-remember.
-
-</td>
-<td width="50%"><img src="asset/demo/add_actions.gif" width="100%" alt="Adding a custom action"></td>
-</tr>
-
-<tr>
-<td width="50%" valign="middle">
-
-### Add apps from the ring
-
-Pull from your installed apps or add one by hand, right in Settings. Nothing to
-hand-edit.
-
-</td>
-<td width="50%"><img src="asset/demo/setting_add_app.gif" width="100%" alt="Adding an app in settings"></td>
-</tr>
-
-<tr>
-<td width="50%" valign="middle">
-
-### Theme it while you watch
-
-Colours, ring and icon size, dim, opacity, follow-cursor, keybinds. Change a
-value and the ring updates as you look at it. Themes are plain JSON, so they
-drop straight into your dotfiles.
-
-</td>
-<td width="50%"><img src="asset/demo/Themes_customisation.gif" width="100%" alt="Live theming"></td>
-</tr>
-</table>
-
-A few things that didn't need their own GIF:
-
-- **Follow-cursor mode**: the accent sector tracks your mouse across the whole screen, not just on the ring.
-- **Icons that don't look broken**: RadiAll digs the right icon out of your `.desktop` files, and when an app genuinely ships none it draws a clean glyph instead of a missing-texture square.
-- **Keybinds you can switch off**: if `Super + A/W/D` clash with your setup, turn the shortcuts off and open rings from the tray or your own `radiall --apps` bind.
-- **Tray icon**: open any ring or Settings from the system tray. Optional, needs `python-gobject` + `libappindicator-gtk3`.
+- **Apps ring** — your pinned apps; click to focus-or-launch, right-click to force a new instance, scroll on a multi-window app to pick which window you land on.
+- **Windows ring** — every open window, grouped by app.
+- **Focus actions** — close / float / fullscreen, the app's own `.desktop` actions, plus custom key-combo shortcuts sent straight to that window.
+- **Long-press** an app in the Apps ring and its action arc opens right where it sits.
+- **Follow-cursor mode** — the accent sector tracks your mouse across the whole screen, not just on the ring.
+- **Live theming** — colours, ring and icon size, dim, opacity, keybinds; change a value and the preview updates as you look at it. Themes are plain JSON.
+- **Icons that don't look broken** — RadiAll digs the right icon out of your `.desktop` files and icon theme; when an app genuinely ships none it draws a clean monogram instead of a missing-texture square.
+- **Tray icon** — open any ring or Settings from the system tray (StatusNotifierItem, built in — no helper process).
 
 ## Getting started
 
-You need **Quickshell** (`qs`). That's the only hard dependency. On Hyprland you
-get the full ride, keybinds wired up for you; on other wlroots compositors it
-still works, you just bind the keys yourself.
+You need a Rust toolchain (`rustup.rs`) and a C compiler. Then:
 
 ```sh
 git clone https://github.com/Osyna/RadiAll
@@ -136,18 +58,26 @@ cd RadiAll
 ./install.sh
 ```
 
-The installer drops a self-contained config in `~/.config/quickshell/radiall/`
-and runs it as its own Quickshell instance, so it leaves any shell you're already
-running alone. On Hyprland it also seeds `Super + A/W/D` and links itself into
-`hyprland.conf` (backup kept). Then press `Super + A`.
+The installer builds the release binary, drops it in `~/.local/bin/radiall`,
+and on Hyprland wires up autostart plus `Super + A/W/D` (backup of your
+`hyprland.conf` kept). Then press `Super + A`.
 
-Already run your own Quickshell shell? RadiAll is a normal config, so you can
-instead drop `launcher/` and the `Launcher` / `Skin` / `Compositor` singletons
-into your setup and add a `RadialMenu {}` next to your bar. That's how I run it.
+**On GNOME / KDE / sway / anything else:** autostart `radiall --daemon`, and
+bind keys to the CLI — it reaches the running daemon over a socket:
+
+```
+radiall --apps       # app ring
+radiall --windows    # open-windows ring
+radiall --actions    # focused-window actions ring
+```
+
+- GNOME: Settings → Keyboard → Custom Shortcuts
+- KDE: System Settings → Shortcuts → Add Command
+- sway: `bindsym $mod+a exec radiall --apps`
 
 ## Using it
 
-- Hold a ring's shortcut, flick the cursor at a slice, let go (or click it).
+- Press a ring's shortcut, flick the cursor at a slice, click it (or press the shortcut again to dismiss).
 - Click the middle hole, or hit `Esc`, to dismiss.
 - Hover the middle for two seconds to bring up Settings (the radish).
 - Long-press an app for its action arc.
@@ -159,28 +89,52 @@ into your setup and add a `RadialMenu {}` next to your bar. That's how I run it.
 ./install.sh --uninstall
 ```
 
-Stops every RadiAll instance and its tray, unlinks itself from `hyprland.conf`
-(backup kept), and removes the config. Your saved apps and settings stay put
-unless you delete them.
+Stops the daemon and removes the binary and Hyprland wiring (backup kept).
+Your apps, settings, and themes stay put in `~/.config/radiall/`.
 
 ## How it works
 
-Nothing exotic, it's a plain Quickshell config. `shell.qml` registers the ring
-shortcuts, draws a transparent layer-shell overlay on every screen, and starts
-the tray helper. Window data comes from Hyprland's IPC when you're on Hyprland
-and from the generic wlr-foreign-toplevel protocol everywhere else, so the same
-code runs on sway, river, Wayfire, and the rest. State is JSON in
-`~/.config/quickshell/radiall/`, easy to read and commit.
+One binary, two jobs. `radiall --daemon` scans your `.desktop` entries, talks
+to the compositor, and draws a transparent screen-covering overlay with Slint
+when a ring opens. `radiall --apps` (and friends) poke the daemon over a unix
+socket — that's why any DE that can bind a key to a command can drive it.
+
+Compositor integration is an adapter behind one trait:
+
+| Backend | Window list | Focus/close/fullscreen | Float | Send-keys | Auto keybinds |
+|---|---|---|---|---|---|
+| Hyprland (IPC) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| wlroots (`wlr-foreign-toplevel`) — sway, river, Wayfire… | ✓ | ✓ | — | — | — |
+| GNOME Wayland, X11, others | — | — | — | — | — |
+
+Where the compositor offers nothing, the apps ring still works fully — the
+windows/actions rings degrade gracefully. On Hyprland the overlay is a
+floating pinned window sized by window rules; elsewhere it falls back to a
+fullscreen surface.
+
+State is JSON in `~/.config/radiall/` (`settings.json`, `apps.json`,
+`themes/*.json`), easy to read and commit. Configs from the old
+Quickshell-based RadiAll are migrated automatically on first run.
+
+### Changes from the Quickshell version
+
+- Standalone binary — Quickshell, QML, and the Python tray helper are gone.
+- Config moved out of the app dir to `~/.config/radiall/`, so uninstalling
+  can't eat your settings anymore.
+- Hyprland binds use plain `exec, radiall --apps` lines — same file
+  (`~/.config/hypr/launcher-binds.conf`), still managed from the settings UI.
+- The ring shows on the active output (the old one drew on every monitor).
+- Live window thumbnails (off by default upstream) are not ported; the label
+  shows the window title instead.
 
 ## Thanks, and where the idea came from
 
-**[Quickshell](https://quickshell.org)** does the heavy lifting here: the
-layer-shell surfaces, the Hyprland and Wayland plumbing, the icon and
-desktop-entry lookups, the whole runtime. RadiAll is really just a QML config
-sitting on top of it. Big thanks to outfoxxed and everyone building Quickshell,
-go give it a star.
+**[Slint](https://slint.dev)** renders the whole UI, tray icon included.
+The first version of RadiAll was a [Quickshell](https://quickshell.org)
+config, and this rewrite reproduces its behavior nearly 1:1 — thanks to
+outfoxxed and everyone building Quickshell for making the original possible.
 
-The concept is borrowed, fondly, from the radial launchers I wished Wayland had:
+The concept is borrowed, fondly, from the radial launchers I wished Linux had:
 
 - **[Splat — Radial Launcher](https://radial.appverge.net/)**, which nailed the flick-at-an-icon feel.
 - **Radial Menu by Frolt Software**, for showing how good a per-window action pie can be.

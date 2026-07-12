@@ -181,10 +181,6 @@ impl Skin {
         (px * self.scale).round()
     }
 
-    /// Adaptive tint: a wash of the text color at alpha `a` (0..1).
-    pub fn tint(&self, a: f32) -> Rgba {
-        self.fg.with_alpha((a * 255.0) as u8)
-    }
 }
 
 #[cfg(test)]
