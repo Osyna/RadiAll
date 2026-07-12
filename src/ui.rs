@@ -1522,8 +1522,31 @@ impl Ui {
             }
             _ => Vec::new(),
         };
+        // global defaults panel (shown when no app is selected; per-app
+        // lists exclude g: rows — they're edited in one place only)
+        let default_rows: Vec<ActionRow> = core
+            .settings
+            .default_actions
+            .iter()
+            .enumerate()
+            .map(|(k, c)| ActionRow {
+                id: format!("g:{k}").into(),
+                label: c.label.clone().into(),
+                glyph: crate::ring::G_KEY.into(),
+                enabled: true,
+                is_custom: true,
+                shortcut: c.shortcut.clone().into(),
+                icon_name: c.icon.clone().into(),
+                color: c.color.clone().into(),
+            })
+            .collect();
         drop(core);
-        sw.set_app_actions(ModelRc::new(VecModel::from(rows)));
+        sw.set_app_actions(ModelRc::new(VecModel::from(
+            rows.into_iter()
+                .filter(|r| !r.id.starts_with("g:"))
+                .collect::<Vec<_>>(),
+        )));
+        sw.set_default_actions(ModelRc::new(VecModel::from(default_rows)));
     }
 
     fn save_settings_debounced(self: &Rc<Self>) {
@@ -1770,45 +1793,67 @@ impl Ui {
         });
         wire!(w.on_add_custom_action, ui, |ui| {
             let sel = ui.selected_app();
-            if let Some(app) = ui.core.borrow_mut().apps.get_mut(sel.max(0) as usize) {
-                if sel >= 0 {
+            if sel >= 0 {
+                if let Some(app) = ui.core.borrow_mut().apps.get_mut(sel as usize) {
                     app.custom_actions.push(CustomAction::default());
                 }
+                ui.save_apps_now();
+            } else {
+                // no selection = the global defaults panel
+                ui.core
+                    .borrow_mut()
+                    .settings
+                    .default_actions
+                    .push(CustomAction::default());
+                config::save_settings(&ui.core.borrow().settings);
             }
-            ui.save_apps_now();
             ui.refresh_selected_actions();
         });
         wire!(w.on_remove_custom_action, ui, |ui, id| {
-            let sel = ui.selected_app();
-            if let Some(k) = id.strip_prefix("c:").and_then(|k| k.parse::<usize>().ok()) {
+            if let Some(k) = id.strip_prefix("g:").and_then(|k| k.parse::<usize>().ok()) {
+                {
+                    let mut core = ui.core.borrow_mut();
+                    if k < core.settings.default_actions.len() {
+                        core.settings.default_actions.remove(k);
+                    }
+                }
+                config::save_settings(&ui.core.borrow().settings);
+            } else if let Some(k) = id.strip_prefix("c:").and_then(|k| k.parse::<usize>().ok()) {
+                let sel = ui.selected_app();
                 if let Some(app) = ui.core.borrow_mut().apps.get_mut(sel.max(0) as usize) {
                     if sel >= 0 && k < app.custom_actions.len() {
                         app.custom_actions.remove(k);
                     }
                 }
+                ui.save_apps_now();
             }
-            ui.save_apps_now();
             ui.refresh_selected_actions();
         });
         wire!(w.on_set_custom_field, ui, |ui, id, field, value| {
-            let sel = ui.selected_app();
-            if let Some(k) = id.strip_prefix("c:").and_then(|k| k.parse::<usize>().ok()) {
+            let v = value.to_string();
+            let apply = |c: &mut CustomAction| match field.as_str() {
+                "label" => c.label = v.clone(),
+                "shortcut" => c.shortcut = v.clone(),
+                "icon" => c.icon = v.clone(),
+                "color" => c.color = v.clone(),
+                _ => {}
+            };
+            if let Some(k) = id.strip_prefix("g:").and_then(|k| k.parse::<usize>().ok()) {
+                if let Some(c) = ui.core.borrow_mut().settings.default_actions.get_mut(k) {
+                    apply(c);
+                }
+                ui.save_settings_debounced();
+            } else if let Some(k) = id.strip_prefix("c:").and_then(|k| k.parse::<usize>().ok()) {
+                let sel = ui.selected_app();
                 if let Some(app) = ui.core.borrow_mut().apps.get_mut(sel.max(0) as usize) {
                     if sel >= 0 {
                         if let Some(c) = app.custom_actions.get_mut(k) {
-                            let v = value.to_string();
-                            match field.as_str() {
-                                "label" => c.label = v,
-                                "shortcut" => c.shortcut = v,
-                                "icon" => c.icon = v,
-                                "color" => c.color = v,
-                                _ => {}
-                            }
+                            apply(c);
                         }
                     }
                 }
+                ui.save_apps_debounced();
             }
-            ui.save_apps_debounced();
             ui.refresh_selected_actions();
         });
         wire!(w.on_set_setting, ui, |ui, key, value| {

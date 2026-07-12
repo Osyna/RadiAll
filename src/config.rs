@@ -90,6 +90,9 @@ pub struct Settings {
     /// Bar: center/left/right/top/bottom. Half ring: left/right/top/bottom
     /// (center falls back to bottom). Radial ignores it.
     pub layout_pos: String,
+    /// Global key-combo actions: shown on EVERY app's actions ring/arc —
+    /// including apps that aren't in the pinned list.
+    pub default_actions: Vec<CustomAction>,
 }
 
 impl Default for Settings {
@@ -118,6 +121,7 @@ impl Default for Settings {
             theme: "default".into(),
             layout: "radial".into(),
             layout_pos: "center".into(),
+            default_actions: Vec::new(),
         }
     }
 }

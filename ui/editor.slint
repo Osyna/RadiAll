@@ -530,12 +530,116 @@ component SettingRow inherits HorizontalLayout {
 }
 
 // ------------------------------------------------------------------ editor --
+// One editable key-combo action (label / shortcut / icon / color). Shared by
+// the per-app ACTIONS list and the global DEFAULT ACTIONS panel — the `a.id`
+// prefix ("c:" per-app, "g:" global) routes the callbacks in Rust.
+component CustomActionCard inherits Rectangle {
+    in property <ActionRow> a;
+    in property <[color]> cols;
+    in property <[string]> hexes;
+    callback set-field(string, string, string);   // (id, field, value)
+    callback remove(string);
+    callback browse(string);                       // open icon picker for id
+    callback pick-color(string, string);           // (id, current hex)
+
+    height: Skin.s(150);
+    border-radius: Skin.s(8);
+    background: Skin.tint(0.05);
+
+    VerticalLayout {
+        padding: Skin.s(10);
+        spacing: Skin.s(8);
+        HorizontalLayout {
+            spacing: Skin.s(8);
+            Text {
+                width: Skin.s(22);
+                text: "\u{f084}";
+                font-family: Skin.icon-font;
+                font-size: Skin.s(14);
+                color: Skin.fg-dim;
+                vertical-alignment: center;
+            }
+            Field {
+                value: root.a.label;
+                placeholder: "label";
+                edited(t) => {
+                    root.set-field(root.a.id, "label", t);
+                }
+            }
+            IconBtn {
+                glyph: "✕";
+                clicked => {
+                    root.remove(root.a.id);
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: Skin.s(8);
+            ShortcutRecorder {
+                value: root.a.shortcut;
+                captured(s) => {
+                    root.set-field(root.a.id, "shortcut", s);
+                }
+            }
+            Field {
+                value: root.a.icon-name;
+                placeholder: "icon name or /path.svg";
+                edited(t) => {
+                    root.set-field(root.a.id, "icon", t);
+                }
+            }
+            PillBtn {
+                text: "Browse…";
+                clicked => {
+                    root.browse(root.a.id);
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: Skin.s(6);
+            alignment: start;
+            for chex[k] in root.hexes: Rectangle {
+                width: Skin.s(22);
+                height: Skin.s(22);
+                border-radius: self.width / 2;
+                background: root.cols[k];
+                border-width: root.a.color.to-lowercase() == chex ? 2px : 1px;
+                border-color: root.a.color.to-lowercase() == chex
+                    ? Skin.tint(0.9)
+                    : Skin.tint(0.3);
+                // "" swatch: theme-default hint ring
+                if chex == "": Rectangle {
+                    width: Skin.s(8);
+                    height: Skin.s(8);
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    border-radius: self.width / 2;
+                    border-width: 1px;
+                    border-color: Skin.tint(0.5);
+                }
+                TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        root.set-field(root.a.id, "color", chex);
+                    }
+                }
+            }
+            PickBtn {
+                clicked => {
+                    root.pick-color(root.a.id, root.a.color);
+                }
+            }
+        }
+    }
+}
+
 
 export component Editor {
     // ---- models (owned + refreshed by Rust) ----
     in property <[AppRow]> apps;
     in property <int> selected-app: -1;
     in property <[ActionRow]> app-actions;     // actions of the selected app
+    in property <[ActionRow]> default-actions; // global key-combo actions (g: ids)
     in property <[InstalledRow]> installed;    // app picker rows (Rust-filtered)
     in property <[IconPick]> icon-picks;       // icon picker results (Rust-filtered)
     in property <int> icon-lib-count;          // 0 -> show the "no library" hint
@@ -814,7 +918,8 @@ export component Editor {
                                         // a completed drag must not re-select a stale index
                                         if (!self.did-drag) {
                                             blur.focus();
-                                            root.select-app(i);
+                                            // re-click deselects -> back to the global defaults panel
+                                            root.select-app(root.selected-app == i ? -1 : i);
                                         }
                                     }
                                     pointer-event(e) => {
@@ -867,16 +972,47 @@ export component Editor {
                         border-width: 1px;
                         border-color: Skin.tint(0.07);
 
-                        if !root.sel-ok: Text {
-                            width: 100%;
-                            height: 100%;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                            text: root.apps.length == 0
-                                ? "No apps yet — add one on the left"
-                                : "Select an app to edit";
-                            color: Skin.fg-dim;
-                            font-size: Skin.s(13);
+                        // no selection -> the GLOBAL defaults editor: key-combo
+                        // actions every app shares, including unpinned ones
+                        if !root.sel-ok: ScrollView {
+                            VerticalLayout {
+                                alignment: start;
+                                padding: Skin.s(14);
+                                spacing: Skin.s(9);
+                                GroupHead { text: "DEFAULT ACTIONS — ALL APPS"; }
+                                Text {
+                                    text: root.apps.length == 0
+                                        ? "No apps pinned yet — add one on the left. Actions below show on EVERY app's ring, pinned or not."
+                                        : "Select an app on the left to edit it — or add key-combo actions here that show on EVERY app's ring, including apps not in the list.";
+                                    color: Skin.fg-dim;
+                                    font-size: Skin.s(11);
+                                    wrap: word-wrap;
+                                }
+                                for a[j] in root.default-actions: CustomActionCard {
+                                    a: a;
+                                    cols: root.action-cols;
+                                    hexes: root.action-hex;
+                                    set-field(id, f, v) => {
+                                        root.set-custom-field(id, f, v);
+                                    }
+                                    remove(id) => {
+                                        root.remove-custom-action(id);
+                                    }
+                                    browse(id) => {
+                                        root.icon-query("");
+                                        root.picking-icon-for = "act:\{id}";
+                                    }
+                                    pick-color(id, cur) => {
+                                        root.open-picker("act:\{id}", cur);
+                                    }
+                                }
+                                PillBtn {
+                                    text: "Add global action";
+                                    clicked => {
+                                        root.add-custom-action();
+                                    }
+                                }
+                            }
                         }
 
                         if root.sel-ok: ScrollView {
@@ -1041,14 +1177,13 @@ export component Editor {
                                 for a[j] in root.app-actions: Rectangle {
                                     height: a.is-custom ? Skin.s(154) : Skin.s(44);
 
-                                    Rectangle {
+                                    // -- template action: glyph + label + toggle
+                                    if !a.is-custom: Rectangle {
                                         width: parent.width;
                                         height: parent.height - Skin.s(4);
                                         border-radius: Skin.s(8);
                                         background: Skin.tint(0.05);
-
-                                        // -- template action: glyph + label + toggle
-                                        if !a.is-custom: HorizontalLayout {
+                                        HorizontalLayout {
                                             padding-left: Skin.s(10);
                                             padding-right: Skin.s(10);
                                             padding-top: (Skin.s(40) - Skin.s(24)) / 2;
@@ -1077,93 +1212,27 @@ export component Editor {
                                                 }
                                             }
                                         }
+                                    }
 
-                                        // -- custom action: label / shortcut / icon / color
-                                        if a.is-custom: VerticalLayout {
-                                            padding: Skin.s(10);
-                                            spacing: Skin.s(8);
-                                            HorizontalLayout {
-                                                spacing: Skin.s(8);
-                                                Text {
-                                                    width: Skin.s(22);
-                                                    text: "\u{f084}";
-                                                    font-family: Skin.icon-font;
-                                                    font-size: Skin.s(14);
-                                                    color: Skin.fg-dim;
-                                                    vertical-alignment: center;
-                                                }
-                                                Field {
-                                                    value: a.label;
-                                                    placeholder: "label";
-                                                    edited(t) => {
-                                                        root.set-custom-field(a.id, "label", t);
-                                                    }
-                                                }
-                                                IconBtn {
-                                                    glyph: "✕";
-                                                    clicked => {
-                                                        root.remove-custom-action(a.id);
-                                                    }
-                                                }
-                                            }
-                                            HorizontalLayout {
-                                                spacing: Skin.s(8);
-                                                ShortcutRecorder {
-                                                    value: a.shortcut;
-                                                    captured(s) => {
-                                                        root.set-custom-field(a.id, "shortcut", s);
-                                                    }
-                                                }
-                                                Field {
-                                                    value: a.icon-name;
-                                                    placeholder: "icon name or /path.svg";
-                                                    edited(t) => {
-                                                        root.set-custom-field(a.id, "icon", t);
-                                                    }
-                                                }
-                                                PillBtn {
-                                                    text: "Browse…";
-                                                    clicked => {
-                                                        root.icon-query("");
-                                                        root.picking-icon-for = "act:\{a.id}";
-                                                    }
-                                                }
-                                            }
-                                            HorizontalLayout {
-                                                spacing: Skin.s(6);
-                                                alignment: start;
-                                                for chex[k] in root.action-hex: Rectangle {
-                                                    width: Skin.s(22);
-                                                    height: Skin.s(22);
-                                                    border-radius: self.width / 2;
-                                                    background: root.action-cols[k];
-                                                    border-width: a.color.to-lowercase() == chex ? 2px : 1px;
-                                                    border-color: a.color.to-lowercase() == chex
-                                                        ? Skin.tint(0.9)
-                                                        : Skin.tint(0.3);
-                                                    // "" swatch: theme-default hint ring
-                                                    if chex == "": Rectangle {
-                                                        width: Skin.s(8);
-                                                        height: Skin.s(8);
-                                                        x: (parent.width - self.width) / 2;
-                                                        y: (parent.height - self.height) / 2;
-                                                        border-radius: self.width / 2;
-                                                        border-width: 1px;
-                                                        border-color: Skin.tint(0.5);
-                                                    }
-                                                    TouchArea {
-                                                        mouse-cursor: pointer;
-                                                        clicked => {
-                                                            root.set-custom-field(a.id, "color", chex);
-                                                        }
-                                                    }
-                                                }
-                                                PickBtn {
-                                                    clicked => {
-                                                        root.open-picker("act:\{a.id}", a.color);
-                                                    }
-                                                }
-                                            }
+                                    // -- custom action: shared card (c: ids)
+                                    if a.is-custom: CustomActionCard {
+                                        width: parent.width;
+                                        height: parent.height - Skin.s(4);
+                                        a: a;
+                                        cols: root.action-cols;
+                                        hexes: root.action-hex;
+                                        set-field(id, f, v) => {
+                                            root.set-custom-field(id, f, v);
+                                        }
+                                        remove(id) => {
+                                            root.remove-custom-action(id);
+                                        }
+                                        browse(id) => {
+                                            root.icon-query("");
+                                            root.picking-icon-for = "act:\{id}";
+                                        }
+                                        pick-color(id, cur) => {
+                                            root.open-picker("act:\{id}", cur);
                                         }
                                     }
                                 }

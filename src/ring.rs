@@ -382,6 +382,18 @@ impl Core {
                 kind: ActionKind::Keys(c.shortcut.clone()),
             });
         }
+        // global defaults: key-combo actions every app shares (settings-
+        // owned, so they also cover apps that aren't in the pinned list)
+        for (k, c) in self.settings.default_actions.iter().enumerate() {
+            out.push(ActionTemplate {
+                id: format!("g:{k}"),
+                label: c.label.clone(),
+                glyph: G_KEY.into(),
+                icon: c.icon.clone(),
+                color: c.color.clone(),
+                kind: ActionKind::Keys(c.shortcut.clone()),
+            });
+        }
         out
     }
 
@@ -707,5 +719,36 @@ mod tests {
         assert_eq!(core.first_running_index(), 1); // kitty is apps[1]
         let empty = core_with(vec![]);
         assert_eq!(empty.first_running_index(), 0);
+    }
+
+    #[test]
+    fn global_default_actions_reach_every_app() {
+        let mut core = core_with(vec![]);
+        core.settings.default_actions.push(crate::config::CustomAction {
+            label: "Reload".into(),
+            shortcut: "ctrl+r".into(),
+            icon: String::new(),
+            color: String::new(),
+        });
+        // an app NOT in the pinned list still gets the global action
+        let stranger = FocusedApp {
+            icon: String::new(),
+            wm_class: "some-random-app".into(),
+            window: Some("1".into()),
+            custom_actions: Vec::new(),
+            action_ids: None,
+        };
+        let acts = core.actions_for(&stranger);
+        assert!(acts.iter().any(|t| t.id == "g:0" && t.label == "Reload"));
+        // key-combo actions bypass a pinned app's template whitelist
+        let pinned = FocusedApp {
+            icon: String::new(),
+            wm_class: "firefox".into(),
+            window: Some("2".into()),
+            custom_actions: Vec::new(),
+            action_ids: Some(vec![]), // everything template-ish disabled
+        };
+        let acts = core.actions_for(&pinned);
+        assert!(acts.iter().any(|t| t.id == "g:0"));
     }
 }
