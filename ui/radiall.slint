@@ -1,0 +1,235 @@
+// RadiAll root windows.
+//   RingWindow    — transparent frameless screen-covering overlay: dim layer,
+//                   the wheel, the per-app action arc, and ONE fullscreen
+//                   input surface whose raw events all route to Rust (the
+//                   whole interaction state machine lives in src/ui.rs).
+//   SettingsWindow — normal window: live preview wheel + the editor.
+
+import { Skin } from "skin.slint";
+import { RingItem, ArcItem, AppRow, ActionRow, InstalledRow } from "types.slint";
+import { Wheel, ActionArc } from "wheel.slint";
+import { Editor } from "editor.slint";
+
+export { Skin }
+
+export component RingWindow inherits Window {
+    no-frame: true;
+    always-on-top: true;
+    background: transparent;
+    title: "RadiAll";
+    default-font-family: Skin.font;
+
+    in property <bool> open: false;            // drives open/close animations
+    in property <float> dim: 0.28;
+
+    // wheel model + geometry (see Wheel for docs)
+    in property <length> outer-r;
+    in property <length> inner-r;
+    in property <length> ring-r;
+    in property <length> icon-box;
+    in property <float> sw;
+    in property <[RingItem]> items;
+    in property <int> hovered-index: -1;
+    in property <int> active-index: 0;
+    in property <float> sector-rotation;
+    in property <string> center-label;
+    in property <bool> show-settings-btn;
+    in property <image> logo;
+    in property <image> focus-icon;
+    in property <bool> show-focus-icon;
+    in property <bool> actions-mode;
+
+    // action arc
+    in property <bool> arc-open: false;
+    in property <[ArcItem]> arc-items;
+    in property <string> arc-label;
+    in property <length> arc-radius;
+    in property <length> arc-btn-r;
+    in property <length> arc-band-inner;
+    in property <length> arc-band-outer;
+
+    // raw input -> Rust state machine (coords are window-local px)
+    callback pointer-moved(length, length);
+    callback pointer-down(length, length, bool /* right button */);
+    callback pointer-up(length, length, bool);
+    callback scrolled(length, length, float /* delta-y, +down */);
+    callback esc-pressed();
+    callback arc-clicked(int);
+
+    // full-screen dim
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        background: black;
+        opacity: root.open ? root.dim : 0;
+        animate opacity { duration: 160ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+    }
+
+    wheel-wrap := Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: 2 * root.outer-r;
+        height: 2 * root.outer-r;
+        opacity: root.open ? 1 : 0;
+        animate opacity { duration: 170ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+
+        Wheel {
+            width: 100%;
+            height: 100%;
+            // pop 0.9 -> 1 stands in for QML's scale open animation
+            pop: root.open ? 1.0 : 0.9;
+            animate pop { duration: 200ms; easing: cubic-bezier(0.34, 1.56, 0.64, 1); }
+            outer-r: root.outer-r;
+            inner-r: root.inner-r;
+            ring-r: root.ring-r;
+            icon-box: root.icon-box;
+            sw: root.sw;
+            items: root.items;
+            hovered-index: root.hovered-index;
+            active-index: root.active-index;
+            sector-rotation: root.sector-rotation;
+            center-label: root.center-label;
+            show-settings-btn: root.show-settings-btn;
+            logo: root.logo;
+            focus-icon: root.focus-icon;
+            show-focus-icon: root.show-focus-icon;
+            actions-mode: root.actions-mode;
+        }
+    }
+
+    // ONE input surface for everything except the arc buttons (stacked above).
+    ta := TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: pointer;
+        moved => {
+            root.pointer-moved(self.mouse-x, self.mouse-y);
+        }
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) {
+                root.pointer-down(self.mouse-x, self.mouse-y, e.button == PointerEventButton.right);
+            } else if (e.kind == PointerEventKind.up) {
+                root.pointer-up(self.mouse-x, self.mouse-y, e.button == PointerEventButton.right);
+            }
+        }
+        scroll-event(e) => {
+            root.scrolled(self.mouse-x, self.mouse-y, -e.delta-y / 1px);
+            accept
+        }
+    }
+
+    ActionArc {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        open: root.arc-open;
+        items: root.arc-items;
+        app-label: root.arc-label;
+        arc-radius: root.arc-radius;
+        btn-r: root.arc-btn-r;
+        band-inner: root.arc-band-inner;
+        band-outer: root.arc-band-outer;
+        action-clicked(i) => {
+            root.arc-clicked(i);
+        }
+    }
+
+    forward-focus: keys;
+    keys := FocusScope {
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                root.esc-pressed();
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+export component SettingsWindow inherits Window {
+    title: "RadiAll Settings";
+    default-font-family: Skin.font;
+    background: Skin.panel-bg;
+    preferred-width: 1080px;
+    preferred-height: 680px;
+
+    // ---- preview wheel (small, non-interactive) ----
+    in property <length> pv-outer-r;
+    in property <length> pv-inner-r;
+    in property <length> pv-ring-r;
+    in property <length> pv-icon-box;
+    in property <float> pv-sw;
+    in property <[RingItem]> pv-items;
+    in property <int> pv-active-index: 0;
+    in property <string> pv-label;
+
+    // ---- editor surface, forwarded 1:1 (see Editor for docs) ----
+    in property <[AppRow]> apps <=> ed.apps;
+    in property <int> selected-app <=> ed.selected-app;
+    in property <[ActionRow]> app-actions <=> ed.app-actions;
+    in property <[InstalledRow]> installed <=> ed.installed;
+    in property <[string]> themes <=> ed.themes;
+    in property <string> current-theme <=> ed.current-theme;
+    in property <string> accent-hex <=> ed.accent-hex;
+    in property <string> bg-hex <=> ed.bg-hex;
+    in property <float> icon-size <=> ed.icon-size;
+    in property <float> ring-radius <=> ed.ring-radius;
+    in property <float> dim <=> ed.dim;
+    in property <float> wheel-opacity <=> ed.wheel-opacity;
+    in property <bool> show-labels <=> ed.show-labels;
+    in property <bool> follow-outside <=> ed.follow-outside;
+    in property <bool> shortcuts-enabled <=> ed.shortcuts-enabled;
+    in property <bool> persist-binds <=> ed.persist-binds;
+    in property <string> sc-apps <=> ed.sc-apps;
+    in property <string> sc-windows <=> ed.sc-windows;
+    in property <string> sc-actions <=> ed.sc-actions;
+    in property <bool> can-manage-keybinds <=> ed.can-manage-keybinds;
+    in property <bool> can-send-keys <=> ed.can-send-keys;
+
+    callback select-app <=> ed.select-app;
+    callback add-app <=> ed.add-app;
+    callback add-installed <=> ed.add-installed;
+    callback remove-app <=> ed.remove-app;
+    callback move-app <=> ed.move-app;
+    callback set-app-field <=> ed.set-app-field;
+    callback toggle-action <=> ed.toggle-action;
+    callback add-custom-action <=> ed.add-custom-action;
+    callback remove-custom-action <=> ed.remove-custom-action;
+    callback set-custom-field <=> ed.set-custom-field;
+    callback set-setting <=> ed.set-setting;
+    callback set-shortcut <=> ed.set-shortcut;
+    callback reset-settings <=> ed.reset-settings;
+    callback close-requested <=> ed.close-requested;
+
+    HorizontalLayout {
+        padding: 18px;
+        spacing: 18px;
+
+        // live preview pane
+        Rectangle {
+            width: 380px;
+            border-radius: 20px;
+            background: Skin.panel-bg.darker(20%);
+            border-width: 1px;
+            border-color: Skin.tint(0.10);
+            Wheel {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                outer-r: root.pv-outer-r;
+                inner-r: root.pv-inner-r;
+                ring-r: root.pv-ring-r;
+                icon-box: root.pv-icon-box;
+                sw: root.pv-sw;
+                items: root.pv-items;
+                hovered-index: root.pv-active-index;
+                active-index: root.pv-active-index;
+                sector-rotation: 0;
+                center-label: root.pv-label;
+                show-settings-btn: false;
+                actions-mode: false;
+                show-focus-icon: false;
+            }
+        }
+
+        ed := Editor { }
+    }
+}

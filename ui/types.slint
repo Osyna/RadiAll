@@ -1,0 +1,48 @@
+// Shared model structs crossing the Rust <-> Slint boundary.
+// Rust builds these; .slint components only render them.
+
+export struct RingItem {
+    label: string,
+    icon: image,          // resolved + loaded by Rust; check has-icon
+    has-icon: bool,
+    glyph: string,        // nerd-font fallback glyph ("" = none)
+    monogram: string,     // last-resort letter when icon+glyph missing
+    dot-count: int,       // open-window dots, already capped at 6
+    sel-dot: int,         // highlighted dot index, -1 = none
+    is-action: bool,      // action items get tinted symbolic icons
+    tint: color,          // icon colorize; transparent = draw as-is
+}
+
+export struct ArcItem {
+    label: string,
+    icon: image,
+    has-icon: bool,
+    glyph: string,
+    tint: color,          // button glyph/icon color; default white
+}
+
+export struct AppRow {
+    name: string,
+    icon-name: string,    // raw configured value (name or abs path)
+    exec: string,         // argv joined with spaces for editing
+    wm-class: string,
+    icon: image,
+    has-icon: bool,
+}
+
+export struct ActionRow {
+    id: string,           // template id ("d:...", "w:close", "c:0", ...)
+    label: string,
+    glyph: string,
+    enabled: bool,
+    is-custom: bool,      // custom key-combo actions expose extra fields
+    shortcut: string,
+    icon-name: string,
+    color: string,        // hex or ""
+}
+
+export struct InstalledRow {
+    name: string,
+    icon: image,
+    has-icon: bool,
+}

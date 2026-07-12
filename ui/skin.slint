@@ -1,0 +1,56 @@
+// The launcher's skin — mirror of src/theme.rs::Skin, pushed by Rust at
+// startup and whenever the theme/settings change. Defaults here match the
+// built-in "default" theme so previews look right in isolation.
+
+export global Skin {
+    in-out property <float> scale: 1.1;
+
+    // band + accent resolve through theme > settings > builtin (done in Rust)
+    in-out property <color> bg: #c9d8ef;
+    in-out property <color> accent: #e44854;
+
+    in-out property <color> glass-bg: #16161885;
+    in-out property <color> glass-hover: #ffffff17;
+    in-out property <color> pill-bg: #ffffff26;
+    in-out property <color> pill-hover: #ffffff40;
+    in-out property <color> btn-hover: #ffffff17;
+    in-out property <color> btn-active: #ffffff24;
+
+    in-out property <color> fg: #ffffffe0;
+    in-out property <color> fg-strong: #fffffff2;
+    in-out property <color> fg-dim: #ffffff73;
+
+    in-out property <color> yellow: #ffd60a;
+    in-out property <color> red: #ff453a;
+    in-out property <color> green: #30d158;
+    in-out property <color> sep: #ffffff1f;
+
+    // ring outline (cell-shading); transparent = subtle auto edge
+    in-out property <color> edge: transparent;
+    in-out property <float> edge-width: 3;
+
+    in-out property <color> panel-bg: #18181afc;
+    in-out property <color> label-pill-bg: #1a202ef5;
+
+    in-out property <string> font: "SF Pro Text";
+    in-out property <string> font-display: "SF Pro Display";
+    in-out property <string> icon-font: "JetBrainsMono Nerd Font";
+    in-out property <string> mono-font: "JetBrainsMono Nerd Font";
+
+    // settings-derived values the wheel reads
+    in-out property <float> wheel-opacity: 0.96;
+    in-out property <bool> show-labels: true;
+
+    // adaptive: dark ink on light bands, white on dark (bandLum branch in Rust)
+    in-out property <color> on-band: #191a2e;
+    in-out property <color> dot: #0000008c;
+    in-out property <color> rim: #0000001a;
+    in-out property <float> rim-width: 1;
+
+    public pure function s(px: float) -> length {
+        return Math.round(px * self.scale) * 1px;
+    }
+    public pure function tint(a: float) -> color {
+        return self.fg.with-alpha(a);
+    }
+}

@@ -1,3 +1,6 @@
+# rust build output
+/target/
+
 # runtime state written by the launcher (per-user, not shipped)
 apps.json
 launcher-settings.json

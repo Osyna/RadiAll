@@ -1,0 +1,55 @@
+// Settings editor (Apps + Look tabs). STUB — implementation pending.
+// The contract below is what src/ui.rs wires; keep signatures stable.
+
+import { Skin } from "skin.slint";
+import { AppRow, ActionRow, InstalledRow } from "types.slint";
+
+export component Editor {
+    // ---- models (owned + refreshed by Rust) ----
+    in property <[AppRow]> apps;
+    in property <int> selected-app: -1;
+    in property <[ActionRow]> app-actions;     // actions of the selected app
+    in property <[InstalledRow]> installed;    // sorted installed-app picker
+    in property <[string]> themes;
+    in property <string> current-theme;
+
+    // ---- Look-tab mirrors ----
+    in property <string> accent-hex;
+    in property <string> bg-hex;
+    in property <float> icon-size;
+    in property <float> ring-radius;
+    in property <float> dim;
+    in property <float> wheel-opacity;
+    in property <bool> show-labels;
+    in property <bool> follow-outside;
+
+    // ---- shortcuts ----
+    in property <bool> shortcuts-enabled;
+    in property <bool> persist-binds;
+    in property <string> sc-apps;
+    in property <string> sc-windows;
+    in property <string> sc-actions;
+    in property <bool> can-manage-keybinds;    // false -> show bind-it-yourself hint
+    in property <bool> can-send-keys;          // false -> custom key-combo actions warn
+
+    // ---- callbacks into Rust ----
+    callback select-app(int);
+    callback add-app();                        // blank manual entry
+    callback add-installed(int);               // index into `installed`
+    callback remove-app(int);
+    callback move-app(int, int);               // (index, dir: -1|+1)
+    callback set-app-field(int, string, string);   // (index, "name"|"icon"|"exec"|"wmClass", value)
+    callback toggle-action(string, bool);      // (action id, enabled) for selected app
+    callback add-custom-action();
+    callback remove-custom-action(string);     // action id ("c:<k>")
+    callback set-custom-field(string, string, string); // (id, "label"|"shortcut"|"icon"|"color", value)
+    callback set-setting(string, string);      // stringly: ("iconSize","54"), ("showLabels","true"), ("accent","#..."), ("theme","nord")
+    callback set-shortcut(string, string);     // (mode, combo) combo lowercase '+'-joined
+    callback reset-settings();
+    callback close-requested();
+
+    // STUB body.
+    Rectangle {
+        background: Skin.panel-bg;
+    }
+}

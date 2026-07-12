@@ -1,0 +1,72 @@
+// The radial wheel + per-app action arc. Pure rendering: every piece of
+// interaction state (hover, rotation, labels, arc contents) is computed in
+// Rust and pushed through the properties below. STUB — visuals pending.
+
+import { Skin } from "skin.slint";
+import { RingItem, ArcItem } from "types.slint";
+
+export component Wheel {
+    // ---- geometry, px, pre-scaled by Rust (Skin.scale and ui-scale applied) ----
+    // Every drawn coordinate must ALSO multiply by `pop` (open-animation scale).
+    in property <float> pop: 1.0;
+    in property <length> outer-r;
+    in property <length> inner-r;
+    in property <length> ring-r;
+    in property <length> icon-box;
+    in property <float> sw;              // sector stroke width (non-cell mode)
+    // ---- model ----
+    in property <[RingItem]> items;
+    in property <int> hovered-index: -1;      // -1 = none (accent wedge fades out)
+    in property <int> active-index: 0;        // latched last hover (wedge stays put)
+    in property <float> sector-rotation;      // deg accumulator (shortest-path, Rust)
+
+    // ---- center hole content ----
+    in property <string> center-label;        // "" hides the pill
+    in property <bool> show-settings-btn;
+    in property <image> logo;                 // the radish
+    in property <image> focus-icon;           // actions-mode app icon
+    in property <bool> show-focus-icon;
+    in property <bool> actions-mode;
+
+    // settings-button click is resolved in Rust via hit-testing; no input here.
+
+    width: 2 * root.outer-r;
+    height: 2 * root.outer-r;
+
+    // STUB rendering: band + hole only.
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        border-radius: self.width / 2;
+        background: Skin.bg.with-alpha(Skin.wheel-opacity);
+    }
+    Rectangle {
+        x: root.outer-r - root.inner-r;
+        y: root.outer-r - root.inner-r;
+        width: 2 * root.inner-r;
+        height: 2 * root.inner-r;
+        border-radius: self.width / 2;
+        background: #000000cc;
+    }
+}
+
+export component ActionArc {
+    // Geometry from Rust (same center as the wheel).
+    in property <length> arc-radius;     // button-center radius
+    in property <length> btn-r;
+    in property <length> band-inner;
+    in property <length> band-outer;
+
+    in property <[ArcItem]> items;
+    in property <string> app-label;      // pill text fallback (hovered label wins)
+    in property <bool> open;
+
+    // Buttons are discrete circles -> they own their TouchAreas (they sit on
+    // top of the fullscreen input layer in the window stacking order).
+    callback action-clicked(int);
+
+    width: 2 * root.band-outer;
+    height: 2 * root.band-outer;
+
+    // STUB: nothing rendered yet.
+}
