@@ -56,6 +56,14 @@ export global Skin {
     in-out property <color> arc-btn-hover: #e44854;   // arc button hover fill
     in-out property <color> settings-btn: white;      // center settings disc
 
+    // ---- section geometry (design-scaled px, pushed by Rust; the wheel
+    //      multiplies by its own ui-scale + open-animation factor) ----
+    in-out property <color> seg-bg: transparent;       // inactive sections; transparent = band only
+    in-out property <float> sector-radius: 7;          // active-section corner radius
+    in-out property <float> seg-radius: 7;             // inactive-section corner radius
+    in-out property <float> section-inset: 3;          // radial padding band edge -> section
+    in-out property <float> seg-gap: 0;                // angular padding between sections (arc px)
+
     public pure function s(px: float) -> length {
         return Math.round(px * self.scale) * 1px;
     }

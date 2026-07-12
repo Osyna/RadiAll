@@ -17,7 +17,6 @@ export component Wheel {
     in property <length> inner-r;
     in property <length> ring-r;
     in property <length> icon-box;
-    in property <float> sw;              // sector stroke width (non-cell mode)
     // ---- model ----
     in property <[RingItem]> items;
     in property <int> hovered-index: -1;      // -1 = none (accent wedge fades out)
@@ -44,13 +43,23 @@ export component Wheel {
     private property <float> for-: root.outer-r / 1px * root.pop;     // outer radius, popped
     private property <float> fir: root.inner-r / 1px * root.pop;      // inner radius, popped
 
-    // cell-shading (theme `edge` set) changes wedge inset + stroke width
+    // ---- parametric sections ----
+    // Rounded annular sectors via the fill + thick round-joined stroke
+    // technique: path inset by (inset + radius), stroke width 2*radius
+    // expands back to the inset edge with corner radius = radius.
+    // Skin geometry values are design-scaled px; gscale (settings preview)
+    // and pop (open animation) apply here.
+    in property <float> gscale: 1.0;
+    private property <float> gk: root.gscale * root.pop;
     private property <bool> cell-edge: Skin.edge.alpha > 0;
-    private property <float> sec-inset: root.cell-edge
-        ? (Skin.s(Skin.edge-width) / 1px) / 2
-        : root.sw / 2 + 3;
-    private property <float> sro: (root.outer-r / 1px - root.sec-inset) * root.pop;
-    private property <float> sri: (root.inner-r / 1px + root.sec-inset) * root.pop;
+    // cell-shading keeps its bold sharp-corner look: radius forced 0
+    private property <float> srad: root.cell-edge ? 0.0 : Skin.sector-radius * root.gk;
+    private property <float> irad: root.cell-edge ? 0.0 : Skin.seg-radius * root.gk;
+    private property <float> sinset: root.cell-edge
+        ? (Skin.s(Skin.edge-width) / 1px) / 2 * root.pop
+        : Skin.section-inset * root.gk;
+    private property <float> hgap: Skin.seg-gap * root.gk / 2.0;
+
     // wedge fill: Rust resolves theme override / per-app color / auto mix
     in property <color> wedge-color: Skin.sector;
     private property <color> sector-c: root.wedge-color;
@@ -62,8 +71,23 @@ export component Wheel {
     private property <float> rot: root.sector-rotation;
     animate rot { duration: 160ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
     private property <angle> wspan: root.count <= 1 ? 359.9deg : root.seg-ang;
-    private property <angle> wa0: -90deg - root.wspan / 2 + root.rot * 1deg;
-    private property <angle> wa1: -90deg + root.wspan / 2 + root.rot * 1deg;
+
+    // wedge path radii + per-edge angular insets (gap/2 + corner radius,
+    // converted to degrees at that edge's radius)
+    private property <float> sro: Math.max(root.for- - root.sinset - root.srad, 1.0);
+    private property <float> sri: Math.clamp(root.fir + root.sinset + root.srad, 1.0, root.sro - 0.5);
+    private property <angle> wgo: Math.min((root.hgap + root.srad) / root.sro * 57.29578deg, root.wspan / 2 - 0.05deg);
+    private property <angle> wgi: Math.min((root.hgap + root.srad) / root.sri * 57.29578deg, root.wspan / 2 - 0.05deg);
+    private property <angle> wa0o: -90deg - root.wspan / 2 + root.rot * 1deg + root.wgo;
+    private property <angle> wa1o: -90deg + root.wspan / 2 + root.rot * 1deg - root.wgo;
+    private property <angle> wa0i: -90deg - root.wspan / 2 + root.rot * 1deg + root.wgi;
+    private property <angle> wa1i: -90deg + root.wspan / 2 + root.rot * 1deg - root.wgi;
+
+    // inactive segments share the math (their own radius, no rotation)
+    private property <float> gro: Math.max(root.for- - root.sinset - root.irad, 1.0);
+    private property <float> gri: Math.clamp(root.fir + root.sinset + root.irad, 1.0, root.gro - 0.5);
+    private property <angle> ggo: Math.min((root.hgap + root.irad) / root.gro * 57.29578deg, root.wspan / 2 - 0.05deg);
+    private property <angle> ggi: Math.min((root.hgap + root.irad) / root.gri * 57.29578deg, root.wspan / 2 - 0.05deg);
 
     // rim circles sit half a line-width inside/outside the band edges
     private property <float> rimw: Skin.rim-width * root.pop;
@@ -91,7 +115,51 @@ export component Wheel {
         Close { }
     }
 
-    // ---- 2. accent sector wedge (annular sector, rounded sw-wide stroke) ----
+    // ---- 1b. inactive sections (only when the theme/settings give them a
+    //      fill; same rounded-sector technique as the wedge) ----
+    if Skin.seg-bg.alpha > 0: Rectangle {
+        width: 100%;
+        height: 100%;
+        for it[i] in root.items: sp := Path {
+            private property <angle> ca: -90deg + i * root.seg-ang;
+            width: 100%;
+            height: 100%;
+            viewbox-width: self.width / 1px;
+            viewbox-height: self.height / 1px;
+            fill: Skin.seg-bg;
+            stroke: Skin.seg-bg;
+            stroke-width: 2 * root.irad * 1px;
+            stroke-line-cap: round;
+            stroke-line-join: round;
+            MoveTo {
+                x: root.cxf + root.gro * Math.cos(sp.ca - root.wspan / 2 + root.ggo);
+                y: root.cxf + root.gro * Math.sin(sp.ca - root.wspan / 2 + root.ggo);
+            }
+            ArcTo {
+                x: root.cxf + root.gro * Math.cos(sp.ca + root.wspan / 2 - root.ggo);
+                y: root.cxf + root.gro * Math.sin(sp.ca + root.wspan / 2 - root.ggo);
+                radius-x: root.gro;
+                radius-y: root.gro;
+                sweep: true;
+                large-arc: root.wspan - 2 * root.ggo > 180deg;
+            }
+            LineTo {
+                x: root.cxf + root.gri * Math.cos(sp.ca + root.wspan / 2 - root.ggi);
+                y: root.cxf + root.gri * Math.sin(sp.ca + root.wspan / 2 - root.ggi);
+            }
+            ArcTo {
+                x: root.cxf + root.gri * Math.cos(sp.ca - root.wspan / 2 + root.ggi);
+                y: root.cxf + root.gri * Math.sin(sp.ca - root.wspan / 2 + root.ggi);
+                radius-x: root.gri;
+                radius-y: root.gri;
+                sweep: false;
+                large-arc: root.wspan - 2 * root.ggi > 180deg;
+            }
+            Close { }
+        }
+    }
+
+    // ---- 2. accent sector wedge (rounded annular sector) ----
     Path {
         width: 100%;
         height: 100%;
@@ -99,28 +167,28 @@ export component Wheel {
         viewbox-height: self.height / 1px;
         fill: root.sector-c;
         stroke: root.sector-c;
-        stroke-width: (root.cell-edge ? 1.0 : root.sw) * root.pop * 1px;
+        stroke-width: (root.cell-edge ? 1.0 * root.pop : 2 * root.srad) * 1px;
         stroke-line-cap: round;
         stroke-line-join: round;
         opacity: root.hovered-index >= 0 && root.count > 0 ? 1 : 0;
         animate opacity { duration: 110ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
-        MoveTo { x: root.cxf + root.sro * Math.cos(root.wa0); y: root.cxf + root.sro * Math.sin(root.wa0); }
+        MoveTo { x: root.cxf + root.sro * Math.cos(root.wa0o); y: root.cxf + root.sro * Math.sin(root.wa0o); }
         ArcTo {
-            x: root.cxf + root.sro * Math.cos(root.wa1);
-            y: root.cxf + root.sro * Math.sin(root.wa1);
+            x: root.cxf + root.sro * Math.cos(root.wa1o);
+            y: root.cxf + root.sro * Math.sin(root.wa1o);
             radius-x: root.sro;
             radius-y: root.sro;
             sweep: true;
-            large-arc: root.wspan > 180deg;
+            large-arc: root.wa1o - root.wa0o > 180deg;
         }
-        LineTo { x: root.cxf + root.sri * Math.cos(root.wa1); y: root.cxf + root.sri * Math.sin(root.wa1); }
+        LineTo { x: root.cxf + root.sri * Math.cos(root.wa1i); y: root.cxf + root.sri * Math.sin(root.wa1i); }
         ArcTo {
-            x: root.cxf + root.sri * Math.cos(root.wa0);
-            y: root.cxf + root.sri * Math.sin(root.wa0);
+            x: root.cxf + root.sri * Math.cos(root.wa0i);
+            y: root.cxf + root.sri * Math.sin(root.wa0i);
             radius-x: root.sri;
             radius-y: root.sri;
             sweep: false;
-            large-arc: root.wspan > 180deg;
+            large-arc: root.wa1i - root.wa0i > 180deg;
         }
         Close { }
     }

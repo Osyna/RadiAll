@@ -126,6 +126,7 @@ skin! {
     label_fg:     Option<Rgba> = None => "labelFg",      // pill text; auto = fgStrong
     arc_btn:      Option<Rgba> = None => "arcBtn",       // idle arc button; auto = fg @ 10%
     arc_btn_hover: Option<Rgba> = None => "arcBtnHover", // auto = accent
+    seg_bg:       Option<Rgba> = None => "segBg",        // inactive sections; auto = settings picker or invisible
     font:         String = "SF Pro Text".into()        => "font",
     font_display: String = "SF Pro Display".into()     => "fontDisplay",
     icon_font:    String = "JetBrainsMono Nerd Font".into() => "iconFont",
@@ -231,19 +232,27 @@ pub fn available() -> Vec<String> {
 
 impl Skin {
     /// Load theme `name`, overlaying its keys onto the built-in defaults.
-    /// `settings_bg` / `settings_accent` are the live Look-tab picker values:
-    /// they win over the defaults but LOSE to an explicit theme key —
-    /// same precedence as the old Skin.qml.
+    /// `settings_bg` / `settings_accent` / `settings_seg_bg` are the live
+    /// Look-tab picker values: they win over the defaults but LOSE to an
+    /// explicit theme key — same precedence as the old Skin.qml.
     ///
     /// A theme may set `"extends": "<parent>"`: the parent's keys apply
     /// first (recursively, depth-capped), then the child's overrides.
-    pub fn load(name: &str, settings_bg: Option<&str>, settings_accent: Option<&str>) -> Self {
+    pub fn load(
+        name: &str,
+        settings_bg: Option<&str>,
+        settings_accent: Option<&str>,
+        settings_seg_bg: Option<&str>,
+    ) -> Self {
         let mut skin = Self::default();
         if let Some(c) = settings_bg.and_then(Rgba::parse) {
             skin.bg = c;
         }
         if let Some(c) = settings_accent.and_then(Rgba::parse) {
             skin.accent = c;
+        }
+        if let Some(c) = settings_seg_bg.and_then(Rgba::parse) {
+            skin.seg_bg = Some(c);
         }
         skin.apply_file(name, 0);
         skin
@@ -319,7 +328,7 @@ mod tests {
     #[test]
     fn theme_overlay_beats_settings_beats_default() {
         // no theme file, settings accent wins over default
-        let s = Skin::load("__nonexistent__", None, Some("#ff0000"));
+        let s = Skin::load("__nonexistent__", None, Some("#ff0000"), None);
         assert_eq!(s.accent, Rgba::rgb(255, 0, 0));
         // untouched keys keep defaults
         assert_eq!(s.scale, 1.1);

@@ -409,6 +409,12 @@ export component Editor {
     in property <float> wheel-opacity;
     in property <bool> show-labels;
     in property <bool> follow-outside;
+    // section geometry (design px) + inactive-section fill
+    in property <float> sector-radius;
+    in property <float> seg-radius;
+    in property <float> section-inset;
+    in property <float> seg-gap;
+    in property <string> seg-bg-hex;
 
     // ---- shortcuts ----
     in property <bool> shortcuts-enabled;
@@ -457,6 +463,8 @@ export component Editor {
     private property <[string]> accent-hexes: ["#e44854", "#0a84ff", "#5e5ce6", "#bf5af2", "#ff9f0a", "#30d158", "#64d2ff", "#ff2d55"];
     private property <[color]>  bg-cols: [#0b0b0d, #1c1c22, #2b2b30, #46464f, #c9d8ef, #dbe4f2, #e8e3d5, #ffffff];
     private property <[string]> bg-hexes: ["#0b0b0d", "#1c1c22", "#2b2b30", "#46464f", "#c9d8ef", "#dbe4f2", "#e8e3d5", "#ffffff"];
+    private property <[color]>  seg-cols: [#14ffffff, #26ffffff, #40ffffff, #14000000, #26000000, #40000000, #00000000];
+    private property <[string]> seg-hexes: ["#14ffffff", "#26ffffff", "#40ffffff", "#14000000", "#26000000", "#40000000", ""];
 
     min-width: Skin.s(480);
     horizontal-stretch: 1;
@@ -1159,6 +1167,137 @@ export component Editor {
                                 vertical-alignment: center;
                                 horizontal-alignment: right;
                             }
+                        }
+
+                        Rectangle { height: Skin.s(6); }
+                        GroupHead { text: "SECTIONS"; }
+                        SettingRow {
+                            label: "Active radius";
+                            sl-srad := HSlider {
+                                minimum: 0;
+                                maximum: 28;
+                                step: 0.5;
+                                value: root.sector-radius;
+                                moved(v) => {
+                                    root.set-setting("sectorRadius", "\{Math.round(v * 2) / 2}");
+                                }
+                            }
+                            Text {
+                                width: Skin.s(44);
+                                text: "\{Math.round(sl-srad.live)}px";
+                                color: Skin.fg-dim;
+                                font-size: Skin.s(12);
+                                vertical-alignment: center;
+                                horizontal-alignment: right;
+                            }
+                        }
+                        SettingRow {
+                            label: "Inactive radius";
+                            sl-irad := HSlider {
+                                minimum: 0;
+                                maximum: 28;
+                                step: 0.5;
+                                value: root.seg-radius;
+                                moved(v) => {
+                                    root.set-setting("segRadius", "\{Math.round(v * 2) / 2}");
+                                }
+                            }
+                            Text {
+                                width: Skin.s(44);
+                                text: "\{Math.round(sl-irad.live)}px";
+                                color: Skin.fg-dim;
+                                font-size: Skin.s(12);
+                                vertical-alignment: center;
+                                horizontal-alignment: right;
+                            }
+                        }
+                        SettingRow {
+                            label: "Edge padding";
+                            sl-inset := HSlider {
+                                minimum: 0;
+                                maximum: 20;
+                                step: 0.5;
+                                value: root.section-inset;
+                                moved(v) => {
+                                    root.set-setting("sectionInset", "\{Math.round(v * 2) / 2}");
+                                }
+                            }
+                            Text {
+                                width: Skin.s(44);
+                                text: "\{Math.round(sl-inset.live)}px";
+                                color: Skin.fg-dim;
+                                font-size: Skin.s(12);
+                                vertical-alignment: center;
+                                horizontal-alignment: right;
+                            }
+                        }
+                        SettingRow {
+                            label: "Section gap";
+                            sl-gap := HSlider {
+                                minimum: 0;
+                                maximum: 24;
+                                step: 0.5;
+                                value: root.seg-gap;
+                                moved(v) => {
+                                    root.set-setting("segGap", "\{Math.round(v * 2) / 2}");
+                                }
+                            }
+                            Text {
+                                width: Skin.s(44);
+                                text: "\{Math.round(sl-gap.live)}px";
+                                color: Skin.fg-dim;
+                                font-size: Skin.s(12);
+                                vertical-alignment: center;
+                                horizontal-alignment: right;
+                            }
+                        }
+                        SettingRow {
+                            label: "Inactive fill";
+                            label-width: Skin.s(100);
+                            HorizontalLayout {
+                                spacing: Skin.s(6);
+                                alignment: start;
+                                for shex[k] in root.seg-hexes: Rectangle {
+                                    width: Skin.s(22);
+                                    height: Skin.s(22);
+                                    border-radius: self.width / 2;
+                                    background: root.seg-cols[k];
+                                    border-width: root.seg-bg-hex.to-lowercase() == shex ? 3px : 1px;
+                                    border-color: root.seg-bg-hex.to-lowercase() == shex
+                                        ? Skin.tint(0.9)
+                                        : Skin.tint(0.25);
+                                    if shex == "": Rectangle {
+                                        width: Skin.s(8);
+                                        height: Skin.s(8);
+                                        x: (parent.width - self.width) / 2;
+                                        y: (parent.height - self.height) / 2;
+                                        border-radius: self.width / 2;
+                                        border-width: 1px;
+                                        border-color: Skin.tint(0.5);
+                                    }
+                                    TouchArea {
+                                        mouse-cursor: pointer;
+                                        clicked => {
+                                            root.set-setting("segBg", shex);
+                                        }
+                                    }
+                                }
+                            }
+                            Field {
+                                value: root.seg-bg-hex;
+                                placeholder: "#22ffffff";
+                                edited(t) => {
+                                    if (t == "" || t.character-count == 7 || t.character-count == 9) {
+                                        root.set-setting("segBg", t);
+                                    }
+                                }
+                            }
+                        }
+                        Text {
+                            text: "Inactive sections are invisible by default (the band shows through). Give them a fill — and a gap — for a segmented wheel; drop Wheel opacity to 0% for sections only.";
+                            color: Skin.fg-dim;
+                            font-size: Skin.s(11);
+                            wrap: word-wrap;
                         }
 
                         Rectangle { height: Skin.s(6); }

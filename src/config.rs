@@ -57,6 +57,16 @@ pub struct Settings {
     /// Opacity of the full-screen black backdrop while open.
     pub dim: f32,
     pub wheel_opacity: f32,
+    /// Corner radius of the ACTIVE section (the accent wedge), design px.
+    pub sector_radius: f32,
+    /// Corner radius of INACTIVE sections (only visible with seg_bg), design px.
+    pub seg_radius: f32,
+    /// Radial padding between the band edges and the sections; 0 = flush.
+    pub section_inset: f32,
+    /// Angular padding between sections, in px of arc.
+    pub seg_gap: f32,
+    /// Inactive-section fill; "" = invisible (band shows through).
+    pub seg_bg: String,
     pub show_labels: bool,
     /// Live window thumbnail while scrolling a multi-window app.
     /// Parsed for compat; the standalone build shows a title preview instead.
@@ -82,6 +92,11 @@ impl Default for Settings {
             ring_radius: 150.0,
             dim: 0.28,
             wheel_opacity: 0.96,
+            sector_radius: 6.0,
+            seg_radius: 6.0,
+            section_inset: 3.0,
+            seg_gap: 0.0,
+            seg_bg: String::new(),
             show_labels: true,
             thumbnails: false,
             follow_outside: false,

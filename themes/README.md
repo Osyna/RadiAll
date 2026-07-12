@@ -54,7 +54,19 @@ QML-style hex, alpha FIRST: `#rgb`, `#rrggbb`, or `#AArrggbb`
 | `labelPillBg` | dark navy | Center label pill fill |
 | `edge` | transparent | Ring outline. Transparent = subtle auto edge; a solid color turns on **cell-shading** (bold cartoon border, see `matrix`) |
 | `edgeWidth` | `3` | Outline width in cell-shading mode |
+| `segBg` | *auto* | Inactive-section fill. Auto = the Look-tab picker, default invisible (band shows through) |
 | `settingsBtn` | white | The center settings disc (behind the radish) |
+
+### Sections (geometry)
+
+The wheel's sections are fully parametric, but geometry lives in
+**settings** (like ring/icon size), tweakable live under Settings → Look →
+Sections: **Active radius** (wedge corner rounding), **Inactive radius**,
+**Edge padding** (radial inset from the band edges — 0 = flush), and
+**Section gap** (angular padding between sections). Give inactive sections
+a fill (`segBg` or the Inactive-fill picker) plus a gap for a segmented
+wheel; set Wheel opacity to 0 % for a sections-only look. Cell-shading
+themes (`edge` set) keep their sharp-cornered style.
 
 ### Action arc
 

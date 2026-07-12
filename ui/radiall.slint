@@ -29,7 +29,6 @@ export component RingWindow inherits Window {
     in property <length> inner-r;
     in property <length> ring-r;
     in property <length> icon-box;
-    in property <float> sw;
     in property <[RingItem]> items;
     in property <int> hovered-index: -1;
     in property <int> active-index: 0;
@@ -86,7 +85,6 @@ export component RingWindow inherits Window {
             inner-r: root.inner-r;
             ring-r: root.ring-r;
             icon-box: root.icon-box;
-            sw: root.sw;
             items: root.items;
             hovered-index: root.hovered-index;
             active-index: root.active-index;
@@ -162,7 +160,7 @@ export component SettingsWindow inherits Window {
     in property <length> pv-inner-r;
     in property <length> pv-ring-r;
     in property <length> pv-icon-box;
-    in property <float> pv-sw;
+    in property <float> pv-scale: 0.5;   // preview wheel ui-scale
     in property <[RingItem]> pv-items;
     in property <int> pv-active-index: 0;
     in property <string> pv-label;
@@ -184,6 +182,11 @@ export component SettingsWindow inherits Window {
     in property <float> wheel-opacity <=> ed.wheel-opacity;
     in property <bool> show-labels <=> ed.show-labels;
     in property <bool> follow-outside <=> ed.follow-outside;
+    in property <float> sector-radius <=> ed.sector-radius;
+    in property <float> seg-radius <=> ed.seg-radius;
+    in property <float> section-inset <=> ed.section-inset;
+    in property <float> seg-gap <=> ed.seg-gap;
+    in property <string> seg-bg-hex <=> ed.seg-bg-hex;
     in property <bool> shortcuts-enabled <=> ed.shortcuts-enabled;
     in property <bool> persist-binds <=> ed.persist-binds;
     in property <string> sc-apps <=> ed.sc-apps;
@@ -228,7 +231,7 @@ export component SettingsWindow inherits Window {
                 inner-r: root.pv-inner-r;
                 ring-r: root.pv-ring-r;
                 icon-box: root.pv-icon-box;
-                sw: root.pv-sw;
+                gscale: root.pv-scale;
                 items: root.pv-items;
                 hovered-index: root.pv-active-index;
                 active-index: root.pv-active-index;

@@ -31,7 +31,6 @@ pub struct Geometry {
     pub inner_r: f32,
     pub ring_r: f32,
     pub icon_box: f32,
-    pub sw: f32,
     // action arc (spec §5)
     pub arc_radius: f32,
     pub arc_btn_r: f32,
@@ -54,7 +53,6 @@ impl Geometry {
             inner_r,
             ring_r,
             icon_box,
-            sw: s(12.0) * ui_scale,
             arc_radius,
             arc_btn_r: btn_r,
             arc_band_inner: outer_r + s(3.0),
@@ -273,7 +271,12 @@ impl Ui {
     fn sync_skin(self: &Rc<Self>) {
         let core = self.core.borrow();
         let s = &core.settings;
-        let skin = SkinData::load(&s.theme, Some(&s.bg), Some(&s.accent));
+        let skin = SkinData::load(
+            &s.theme,
+            Some(&s.bg),
+            Some(&s.accent),
+            if s.seg_bg.is_empty() { None } else { Some(&s.seg_bg) },
+        );
         let light = band_lum(skin.bg) > 0.5;
         let cell_edge = skin.edge.a > 0;
         let (rim, rim_w) = if cell_edge {
@@ -355,6 +358,14 @@ impl Ui {
         g.set_arc_bg(to_color(skin.arc_bg));
         g.set_arc_stroke(to_color(skin.arc_stroke));
         g.set_settings_btn(to_color(skin.settings_btn));
+        // section geometry + inactive-section fill (design-scaled px; the
+        // wheel applies its own ui-scale / pop factors)
+        let seg_bg = skin.seg_bg.unwrap_or(Rgba::rgba(0, 0, 0, 0));
+        g.set_seg_bg(to_color(seg_bg));
+        g.set_sector_radius(skin.s(core.settings.sector_radius));
+        g.set_seg_radius(skin.s(core.settings.seg_radius));
+        g.set_section_inset(skin.s(core.settings.section_inset));
+        g.set_seg_gap(skin.s(core.settings.seg_gap));
     }
 
     fn sync_geometry(self: &Rc<Self>) {
@@ -374,7 +385,6 @@ impl Ui {
         w.set_inner_r(geo.inner_r);
         w.set_ring_r(geo.ring_r);
         w.set_icon_box(geo.icon_box);
-        w.set_sw(geo.sw);
         w.set_arc_radius(geo.arc_radius);
         w.set_arc_btn_r(geo.arc_btn_r);
         w.set_arc_band_inner(geo.arc_band_inner);
@@ -388,7 +398,6 @@ impl Ui {
         w.set_pv_inner_r(pv.inner_r);
         w.set_pv_ring_r(pv.ring_r);
         w.set_pv_icon_box(pv.icon_box);
-        w.set_pv_sw(pv.sw);
     }
 
     // --------------------------------------------------- model building
@@ -1109,6 +1118,11 @@ impl Ui {
         sw.set_wheel_opacity(s.wheel_opacity);
         sw.set_show_labels(s.show_labels);
         sw.set_follow_outside(s.follow_outside);
+        sw.set_sector_radius(s.sector_radius);
+        sw.set_seg_radius(s.seg_radius);
+        sw.set_section_inset(s.section_inset);
+        sw.set_seg_gap(s.seg_gap);
+        sw.set_seg_bg_hex(s.seg_bg.clone().into());
         sw.set_shortcuts_enabled(s.shortcuts_enabled);
         sw.set_persist_binds(s.persist_binds);
         sw.set_sc_apps(s.shortcuts.apps.clone().into());
@@ -1444,6 +1458,11 @@ impl Ui {
                         "ringRadius" => s.ring_radius = v.parse().unwrap_or(s.ring_radius),
                         "dim" => s.dim = v.parse().unwrap_or(s.dim),
                         "wheelOpacity" => s.wheel_opacity = v.parse().unwrap_or(s.wheel_opacity),
+                        "sectorRadius" => s.sector_radius = v.parse().unwrap_or(s.sector_radius),
+                        "segRadius" => s.seg_radius = v.parse().unwrap_or(s.seg_radius),
+                        "sectionInset" => s.section_inset = v.parse().unwrap_or(s.section_inset),
+                        "segGap" => s.seg_gap = v.parse().unwrap_or(s.seg_gap),
+                        "segBg" => s.seg_bg = v,
                         "showLabels" => s.show_labels = v == "true",
                         "followOutside" => s.follow_outside = v == "true",
                         "theme" => s.theme = v,
