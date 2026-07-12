@@ -17,6 +17,18 @@ export component Wheel {
     in property <length> inner-r;
     in property <length> ring-r;
     in property <length> icon-box;
+    // ---- layout engine ----
+    // 0 = radial donut, 1 = linear bar, 2 = half ring. The half ring reuses
+    // ALL angular math with a 180° span starting at a0-deg; its hidden
+    // hemisphere is clipped by the screen edge it anchors to.
+    in property <int> layout: 0;
+    in property <float> a0-deg: 180;         // half ring: span start (screen deg)
+    in property <bool> bar-vertical: false;
+    in property <length> bar-pitch;
+    in property <length> bar-thick;
+    in property <length> bar-pad;
+    // pill side for bars: -1 = before (above/left of bar), 1 = after
+    in property <int> pill-side: -1;
     // ---- model ----
     in property <[RingItem]> items;
     in property <int> hovered-index: -1;      // -1 = none (accent wedge fades out)
@@ -33,12 +45,27 @@ export component Wheel {
 
     // settings-button click is resolved in Rust via hit-testing; no input here.
 
-    width: 2 * root.outer-r;
-    height: 2 * root.outer-r;
+    private property <bool> is-bar: root.layout == 1;
+    private property <bool> is-half: root.layout == 2;
+    private property <length> bar-len: root.count * root.bar-pitch + 2 * root.bar-pad;
+    width: root.is-bar ? (root.bar-vertical ? root.bar-thick : root.bar-len) : 2 * root.outer-r;
+    height: root.is-bar ? (root.bar-vertical ? root.bar-len : root.bar-thick) : 2 * root.outer-r;
 
     // ---- derived (all divisions guarded against items = []) ----
     private property <int> count: root.items.length;
-    private property <angle> seg-ang: 360deg / Math.max(root.count, 1);
+    private property <angle> span: root.is-half ? 180deg : 360deg;
+    private property <angle> seg-ang: root.span / Math.max(root.count, 1);
+    // center angle of slice i: radial keeps slice 0 at the top; the half
+    // ring tiles its span from a0. Mirrored by Geometry::angle_of in Rust.
+    pure function slice-ang(i: int) -> angle {
+        return root.is-half
+            ? root.a0-deg * 1deg + (i + 0.5) * root.seg-ang
+            : -90deg + i * root.seg-ang;
+    }
+    // base angle the wedge rotation accumulator is relative to
+    private property <angle> wc-base: root.is-half ? root.a0-deg * 1deg + root.seg-ang / 2 : -90deg;
+    // half ring: direction from center toward the visible hemisphere middle
+    private property <angle> mid-ang: root.a0-deg * 1deg + 90deg;
     private property <float> cxf: root.outer-r / 1px;                 // center, px
     private property <float> for-: root.outer-r / 1px * root.pop;     // outer radius, popped
     private property <float> fir: root.inner-r / 1px * root.pop;      // inner radius, popped
@@ -78,10 +105,10 @@ export component Wheel {
     private property <float> sri: Math.clamp(root.fir + root.sinset + root.srad, 1.0, root.sro - 0.5);
     private property <angle> wgo: Math.min((root.hgap + root.srad) / root.sro * 57.29578deg, root.wspan / 2 - 0.05deg);
     private property <angle> wgi: Math.min((root.hgap + root.srad) / root.sri * 57.29578deg, root.wspan / 2 - 0.05deg);
-    private property <angle> wa0o: -90deg - root.wspan / 2 + root.rot * 1deg + root.wgo;
-    private property <angle> wa1o: -90deg + root.wspan / 2 + root.rot * 1deg - root.wgo;
-    private property <angle> wa0i: -90deg - root.wspan / 2 + root.rot * 1deg + root.wgi;
-    private property <angle> wa1i: -90deg + root.wspan / 2 + root.rot * 1deg - root.wgi;
+    private property <angle> wa0o: root.wc-base - root.wspan / 2 + root.rot * 1deg + root.wgo;
+    private property <angle> wa1o: root.wc-base + root.wspan / 2 + root.rot * 1deg - root.wgo;
+    private property <angle> wa0i: root.wc-base - root.wspan / 2 + root.rot * 1deg + root.wgi;
+    private property <angle> wa1i: root.wc-base + root.wspan / 2 + root.rot * 1deg - root.wgi;
 
     // inactive segments share the math (their own radius, no rotation)
     private property <float> gro: Math.max(root.for- - root.sinset - root.irad, 1.0);
@@ -97,8 +124,9 @@ export component Wheel {
     private property <bool> pill-on: Skin.show-labels
         && root.center-label != "" && !root.show-settings-btn;
 
-    // ---- 1. donut band (even-odd punches the hole) ----
-    Path {
+    // ---- 1. donut band (even-odd punches the hole; half rings are clipped
+    //      by the screen edge their center sits on, so the path is shared) ----
+    if !root.is-bar: Path {
         width: 100%;
         height: 100%;
         viewbox-width: self.width / 1px;
@@ -117,11 +145,11 @@ export component Wheel {
 
     // ---- 1b. inactive sections (only when the theme/settings give them a
     //      fill; same rounded-sector technique as the wedge) ----
-    if Skin.seg-bg.alpha > 0: Rectangle {
+    if Skin.seg-bg.alpha > 0 && !root.is-bar: Rectangle {
         width: 100%;
         height: 100%;
         for it[i] in root.items: sp := Path {
-            private property <angle> ca: -90deg + i * root.seg-ang;
+            private property <angle> ca: root.slice-ang(i);
             width: 100%;
             height: 100%;
             viewbox-width: self.width / 1px;
@@ -159,8 +187,63 @@ export component Wheel {
         }
     }
 
+    // ---- 1c. BAR band + inactive slots + accent slider (linear layout) ----
+    if root.is-bar: Rectangle {
+        width: 100%;
+        height: 100%;
+        // band
+        Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: root.width * root.pop;
+            height: root.height * root.pop;
+            background: Skin.bg.with-alpha(Skin.wheel-opacity);
+            border-radius: min(Skin.s(18) * root.pop, root.bar-thick / 2);
+            border-width: Skin.rim-width * root.pop * 1px;
+            border-color: Skin.rim;
+        }
+        // inactive slots (same seg-bg/inset/radius language as the wheel)
+        if Skin.seg-bg.alpha > 0: Rectangle {
+            width: 100%;
+            height: 100%;
+            for it[i] in root.items: Rectangle {
+                private property <length> along: root.bar-pad
+                    + i * root.bar-pitch + root.hgap * 1px + root.sinset * 1px;
+                private property <length> sz: root.bar-pitch
+                    - 2 * (root.hgap * 1px) - 2 * (root.sinset * 1px);
+                private property <length> across-sz: root.bar-thick - 2 * (root.sinset * 1px) * 2;
+                x: root.bar-vertical ? (root.width - self.width) / 2 : self.along;
+                y: root.bar-vertical ? self.along : (root.height - self.height) / 2;
+                width: root.bar-vertical ? self.across-sz : self.sz;
+                height: root.bar-vertical ? self.sz : self.across-sz;
+                background: Skin.seg-bg;
+                border-radius: root.irad * 1px;
+            }
+        }
+        // accent slider (the wedge's linear cousin: slides between slots)
+        Rectangle {
+            private property <length> along: root.bar-pad
+                + Math.max(root.active-index, 0) * root.bar-pitch
+                + root.hgap * 1px + root.sinset * 1px;
+            animate along { duration: 160ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+            private property <length> sz: root.bar-pitch
+                - 2 * (root.hgap * 1px) - 2 * (root.sinset * 1px);
+            private property <length> across-sz: root.bar-thick - 2 * (root.sinset * 1px) * 2;
+            x: root.bar-vertical ? (root.width - self.width) / 2 : self.along;
+            y: root.bar-vertical ? self.along : (root.height - self.height) / 2;
+            width: root.bar-vertical ? self.across-sz : self.sz;
+            height: root.bar-vertical ? self.sz : self.across-sz;
+            background: root.sector-c;
+            border-radius: root.srad * 1px;
+            border-width: root.cell-edge ? Skin.s(Skin.edge-width) : 0;
+            border-color: Skin.edge;
+            opacity: root.hovered-index >= 0 && root.count > 0 ? 1 : 0;
+            animate opacity { duration: 110ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+        }
+    }
+
     // ---- 2. accent sector wedge (rounded annular sector) ----
-    Path {
+    if !root.is-bar: Path {
         width: 100%;
         height: 100%;
         viewbox-width: self.width / 1px;
@@ -194,7 +277,7 @@ export component Wheel {
     }
 
     // ---- 3. rim (drawn on top of the sector so the outline is seamless) ----
-    Path {
+    if !root.is-bar: Path {
         width: 100%;
         height: 100%;
         viewbox-width: self.width / 1px;
@@ -212,17 +295,24 @@ export component Wheel {
         Close { }
     }
 
-    // ---- 4. actions-mode focused-app icon (lives in the hole) ----
-    if root.show-focus-icon: Image {
+    // ---- 4. actions-mode focused-app icon (radial hole; half rings shift
+    //      it into the visible hemisphere; bars have no hole -> hidden) ----
+    if root.show-focus-icon && !root.is-bar: Image {
         source: root.focus-icon;
         width: root.inner-r * 0.74 * root.pop;
         height: self.width;
-        x: root.outer-r - self.width / 2;
-        y: root.outer-r - root.inner-r * 0.24 * root.pop - self.height / 2;
+        x: root.outer-r
+            + (root.is-half ? root.inner-r * 0.38 * root.pop * Math.cos(root.mid-ang) : 0px)
+            - self.width / 2;
+        y: root.outer-r
+            + (root.is-half
+                ? root.inner-r * 0.38 * root.pop * Math.sin(root.mid-ang)
+                : -root.inner-r * 0.24 * root.pop)
+            - self.height / 2;
     }
 
-    // ---- 5. settings button (QML z0: under icons/pill, spatially separate) ----
-    Rectangle {
+    // ---- 5. settings button (radial only: it lives in the full hole) ----
+    if root.layout == 0: Rectangle {
         private property <float> ss: root.show-settings-btn ? 1.0 : 0.6;
         animate ss { duration: 180ms; easing: cubic-bezier(0.34, 1.56, 0.64, 1); }
         private property <length> dia: Skin.s(82) * self.ss * root.pop;
@@ -251,7 +341,7 @@ export component Wheel {
         private property <float> hs: root.hovered-index == i ? 1.14 : 1.0;
         animate hs { duration: 150ms; easing: cubic-bezier(0.34, 1.56, 0.64, 1); }
         private property <float> k: root.pop * self.hs;   // slot content scale
-        private property <angle> ang: -90deg + i * root.seg-ang;
+        private property <angle> ang: root.slice-ang(i);
         private property <length> box: root.icon-box * self.k;
         // window-count dots metrics
         private property <length> dot-d: Skin.s(5) * self.k;
@@ -263,8 +353,16 @@ export component Wheel {
 
         width: self.box;
         height: self.box;
-        x: root.outer-r + root.ring-r * root.pop * Math.cos(self.ang) - self.box / 2;
-        y: root.outer-r + root.ring-r * root.pop * Math.sin(self.ang) - self.box / 2;
+        x: root.is-bar
+            ? (root.bar-vertical
+                ? root.width / 2 - self.box / 2
+                : root.bar-pad + (i + 0.5) * root.bar-pitch - self.box / 2)
+            : root.outer-r + root.ring-r * root.pop * Math.cos(self.ang) - self.box / 2;
+        y: root.is-bar
+            ? (root.bar-vertical
+                ? root.bar-pad + (i + 0.5) * root.bar-pitch - self.box / 2
+                : root.height / 2 - self.box / 2)
+            : root.outer-r + root.ring-r * root.pop * Math.sin(self.ang) - self.box / 2;
 
         // content priority: icon image -> nerd-font glyph -> monogram
         if item.has-icon: Image {
@@ -323,18 +421,32 @@ export component Wheel {
         visible: self.opacity > 0.001;
         // The pill must fit the hole: cap at the chord width where it sits
         // (2·r·√(1−0.46²) ≈ 1.78·r covers the lowered actions position too)
-        // and marquee-scroll the text instead of truncating it.
+        // and marquee-scroll the text instead of truncating it. Bars cap at
+        private property <length> max-w: root.is-bar
+            ? root.bar-len - Skin.s(8)
+            : root.is-half ? root.inner-r * 1.0 : root.inner-r * 1.78;
         private property <length> pad: Skin.s(24) * self.k;
-        private property <length> max-w: root.inner-r * 1.78;
         width: min(ptxt.preferred-width + self.pad, self.max-w);
         height: ptxt.preferred-height + Skin.s(12) * self.k;
         border-radius: Skin.s(9) * self.k;
         background: Skin.label-pill-bg;
         clip: true;
-        x: root.outer-r - self.width / 2;
-        y: root.outer-r
-            + (root.actions-mode ? root.inner-r * 0.46 * root.pop : 0px)
-            - self.height / 2;
+        x: root.is-bar
+            ? (root.bar-vertical
+                ? (root.pill-side < 0 ? -self.width - Skin.s(10) : root.bar-thick + Skin.s(10))
+                : root.width / 2 - self.width / 2)
+            : root.outer-r
+                + (root.is-half ? root.inner-r * 0.52 * root.pop * Math.cos(root.mid-ang) : 0px)
+                - self.width / 2;
+        y: root.is-bar
+            ? (root.bar-vertical
+                ? root.height / 2 - self.height / 2
+                : (root.pill-side < 0 ? -self.height - Skin.s(10) : root.bar-thick + Skin.s(10)))
+            : root.outer-r
+                + (root.is-half
+                    ? root.inner-r * 0.52 * root.pop * Math.sin(root.mid-ang)
+                    : (root.actions-mode ? root.inner-r * 0.46 * root.pop : 0px))
+                - self.height / 2;
         // ---- marquee (défilement): ping-pong at 55 px/s with 1.2 s end
         // pauses. animation-tick() is only read while `scrolling`, so short
         // labels cost zero redraws.

@@ -29,6 +29,14 @@ export component RingWindow inherits Window {
     in property <length> inner-r;
     in property <length> ring-r;
     in property <length> icon-box;
+    // layout engine (0 radial / 1 bar / 2 half) + position (0 center,
+    // 1 left, 2 right, 3 top, 4 bottom); placement mirrors Geometry::menu_origin
+    in property <int> menu-layout: 0;
+    in property <int> menu-pos: 0;
+    in property <float> a0-deg: 180;
+    in property <length> bar-pitch;
+    in property <length> bar-thick;
+    in property <length> bar-pad;
     in property <[RingItem]> items;
     in property <int> hovered-index: -1;
     in property <int> active-index: 0;
@@ -40,6 +48,10 @@ export component RingWindow inherits Window {
     in property <image> focus-icon;
     in property <bool> show-focus-icon;
     in property <bool> actions-mode;
+    // arc anchor (window coords; radial = window center, bar/half = the
+    // hovered item, pushed by Rust when the arc opens)
+    in property <length> arc-cx;
+    in property <length> arc-cy;
 
     // action arc
     in property <bool> arc-open: false;
@@ -68,10 +80,32 @@ export component RingWindow inherits Window {
     }
 
     wheel-wrap := Rectangle {
-        x: (parent.width - self.width) / 2;
-        y: (parent.height - self.height) / 2;
-        width: 2 * root.outer-r;
-        height: 2 * root.outer-r;
+        private property <bool> is-bar: root.menu-layout == 1;
+        private property <bool> is-half: root.menu-layout == 2;
+        private property <bool> bar-v: self.is-bar && (root.menu-pos == 1 || root.menu-pos == 2);
+        private property <length> bar-len: root.items.length * root.bar-pitch + 2 * root.bar-pad;
+        private property <length> edge-m: root.bar-pad * 1.5;
+        width: self.is-bar ? (self.bar-v ? root.bar-thick : self.bar-len) : 2 * root.outer-r;
+        height: self.is-bar ? (self.bar-v ? self.bar-len : root.bar-thick) : 2 * root.outer-r;
+        // mirrors Geometry::menu_origin — half rings center ON the edge
+        x: self.is-half
+            ? (root.menu-pos == 1 ? -root.outer-r
+                : root.menu-pos == 2 ? parent.width - root.outer-r
+                : (parent.width - self.width) / 2)
+            : self.is-bar
+                ? (root.menu-pos == 1 ? self.edge-m
+                    : root.menu-pos == 2 ? parent.width - self.edge-m - self.width
+                    : (parent.width - self.width) / 2)
+                : (parent.width - self.width) / 2;
+        y: self.is-half
+            ? (root.menu-pos == 3 ? -root.outer-r
+                : root.menu-pos == 1 || root.menu-pos == 2 ? (parent.height - self.height) / 2
+                : parent.height - root.outer-r)
+            : self.is-bar
+                ? (root.menu-pos == 3 ? self.edge-m
+                    : root.menu-pos == 4 ? parent.height - self.edge-m - self.height
+                    : (parent.height - self.height) / 2)
+                : (parent.height - self.height) / 2;
         opacity: root.open ? 1 : 0;
         animate opacity { duration: 170ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
 
@@ -85,6 +119,15 @@ export component RingWindow inherits Window {
             inner-r: root.inner-r;
             ring-r: root.ring-r;
             icon-box: root.icon-box;
+            layout: root.menu-layout;
+            a0-deg: root.a0-deg;
+            bar-vertical: wheel-wrap.bar-v;
+            bar-pitch: root.bar-pitch;
+            bar-thick: root.bar-thick;
+            bar-pad: root.bar-pad;
+            // pill hangs away from the anchored edge (top bar -> below, left
+            // bar -> right of it); center/bottom default above
+            pill-side: root.menu-pos == 3 || root.menu-pos == 1 ? 1 : -1;
             items: root.items;
             hovered-index: root.hovered-index;
             active-index: root.active-index;
@@ -122,8 +165,8 @@ export component RingWindow inherits Window {
     }
 
     ActionArc {
-        x: (parent.width - self.width) / 2;
-        y: (parent.height - self.height) / 2;
+        x: root.arc-cx - self.width / 2;
+        y: root.arc-cy - self.height / 2;
         open: root.arc-open;
         items: root.arc-items;
         app-label: root.arc-label;
@@ -162,6 +205,12 @@ export component SettingsWindow inherits Window {
     in property <length> pv-inner-r;
     in property <length> pv-ring-r;
     in property <length> pv-icon-box;
+    in property <int> pv-layout: 0;
+    in property <int> pv-pos: 0;
+    in property <float> pv-a0-deg: 180;
+    in property <length> pv-bar-pitch;
+    in property <length> pv-bar-thick;
+    in property <length> pv-bar-pad;
     in property <float> pv-scale: 0.5;   // preview wheel ui-scale
     in property <[RingItem]> pv-items;
     in property <int> pv-active-index: 0;
@@ -186,6 +235,8 @@ export component SettingsWindow inherits Window {
     in property <bool> follow-outside <=> ed.follow-outside;
     in property <float> hole-size <=> ed.hole-size;
     in property <bool> show-dots <=> ed.show-dots;
+    in property <string> menu-layout-name <=> ed.menu-layout-name;
+    in property <string> menu-pos-name <=> ed.menu-pos-name;
     in property <float> sector-radius <=> ed.sector-radius;
     in property <float> seg-radius <=> ed.seg-radius;
     in property <float> section-inset <=> ed.section-inset;
@@ -230,20 +281,49 @@ export component SettingsWindow inherits Window {
         padding: 18px;
         spacing: 18px;
 
-        // live preview pane
+        // live preview pane — a mini screen: the menu positions itself with
+        // the same rules as the real overlay (half rings clip on the edge)
         Rectangle {
             width: 380px;
             border-radius: 20px;
             background: Skin.panel-bg.darker(20%);
             border-width: 1px;
             border-color: Skin.tint(0.10);
+            clip: true;
+            private property <bool> is-bar: root.pv-layout == 1;
+            private property <bool> is-half: root.pv-layout == 2;
+            private property <bool> bar-v: self.is-bar && (root.pv-pos == 1 || root.pv-pos == 2);
+            private property <length> edge-m: root.pv-bar-pad * 1.5;
             Wheel {
-                x: (parent.width - self.width) / 2;
-                y: (parent.height - self.height) / 2;
+                x: parent.is-half
+                    ? (root.pv-pos == 1 ? -root.pv-outer-r
+                        : root.pv-pos == 2 ? parent.width - root.pv-outer-r
+                        : (parent.width - self.width) / 2)
+                    : parent.is-bar
+                        ? (root.pv-pos == 1 ? parent.edge-m
+                            : root.pv-pos == 2 ? parent.width - parent.edge-m - self.width
+                            : (parent.width - self.width) / 2)
+                        : (parent.width - self.width) / 2;
+                y: parent.is-half
+                    ? (root.pv-pos == 3 ? -root.pv-outer-r
+                        : root.pv-pos == 1 || root.pv-pos == 2 ? (parent.height - self.height) / 2
+                        : parent.height - root.pv-outer-r)
+                    : parent.is-bar
+                        ? (root.pv-pos == 3 ? parent.edge-m
+                            : root.pv-pos == 4 ? parent.height - parent.edge-m - self.height
+                            : (parent.height - self.height) / 2)
+                        : (parent.height - self.height) / 2;
                 outer-r: root.pv-outer-r;
                 inner-r: root.pv-inner-r;
                 ring-r: root.pv-ring-r;
                 icon-box: root.pv-icon-box;
+                layout: root.pv-layout;
+                a0-deg: root.pv-a0-deg;
+                bar-vertical: parent.bar-v;
+                bar-pitch: root.pv-bar-pitch;
+                bar-thick: root.pv-bar-thick;
+                bar-pad: root.pv-bar-pad;
+                pill-side: root.pv-pos == 3 || root.pv-pos == 1 ? 1 : -1;
                 gscale: root.pv-scale;
                 items: root.pv-items;
                 hovered-index: root.pv-active-index;

@@ -85,6 +85,11 @@ pub struct Settings {
     pub shortcuts_enabled: bool,
     pub shortcuts: Shortcuts,
     pub theme: String,
+    /// Menu shape: "radial" (donut) | "bar" (linear) | "half" (half ring).
+    pub layout: String,
+    /// Bar: center/left/right/top/bottom. Half ring: left/right/top/bottom
+    /// (center falls back to bottom). Radial ignores it.
+    pub layout_pos: String,
 }
 
 impl Default for Settings {
@@ -111,6 +116,8 @@ impl Default for Settings {
             shortcuts_enabled: true,
             shortcuts: Shortcuts::default(),
             theme: "default".into(),
+            layout: "radial".into(),
+            layout_pos: "center".into(),
         }
     }
 }

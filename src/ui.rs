@@ -37,12 +37,63 @@ const ACTIVATE_DELAY_MS: u64 = 120; // unmap-refocus settle before dispatch
 
 // ------------------------------------------------------------- geometry
 
+/// Menu shape. Radial and Half share all angular math (Half is a radial
+/// wheel whose center sits ON a screen edge — the hidden hemisphere is
+/// simply clipped); Bar is linear.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum LayoutKind {
+    #[default]
+    Radial,
+    Bar,
+    Half,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum LayoutPos {
+    #[default]
+    Center,
+    Left,
+    Right,
+    Top,
+    Bottom,
+}
+
+pub fn parse_layout(layout: &str, pos: &str) -> (LayoutKind, LayoutPos) {
+    let kind = match layout {
+        "bar" => LayoutKind::Bar,
+        "half" => LayoutKind::Half,
+        _ => LayoutKind::Radial,
+    };
+    let mut pos = match pos {
+        "left" => LayoutPos::Left,
+        "right" => LayoutPos::Right,
+        "top" => LayoutPos::Top,
+        "bottom" => LayoutPos::Bottom,
+        _ => LayoutPos::Center,
+    };
+    // a half ring needs an edge to sit on
+    if kind == LayoutKind::Half && pos == LayoutPos::Center {
+        pos = LayoutPos::Bottom;
+    }
+    (kind, pos)
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Geometry {
+    pub kind: LayoutKind,
+    pub pos: LayoutPos,
     pub outer_r: f32,
     pub inner_r: f32,
     pub ring_r: f32,
     pub icon_box: f32,
+    /// Angular window (radial: full turn from the top; half: the visible
+    /// hemisphere). a0 = start edge of slice 0, radians, screen coords.
+    pub a0: f32,
+    pub span: f32,
+    // bar layout (lengths depend on the item count, computed per rebuild)
+    pub bar_pitch: f32,
+    pub bar_thick: f32,
+    pub bar_pad: f32,
     // action arc (spec §5)
     pub arc_radius: f32,
     pub arc_btn_r: f32,
@@ -53,6 +104,7 @@ pub struct Geometry {
 impl Geometry {
     pub fn compute(settings: &crate::config::Settings, skin: &SkinData, ui_scale: f32) -> Self {
         let s = |px: f32| skin.s(px);
+        let (kind, pos) = parse_layout(&settings.layout, &settings.layout_pos);
         let ring_r = s(settings.ring_radius) * ui_scale;
         let icon_box = s(settings.icon_size) * ui_scale;
         let outer_r = ring_r + icon_box * 0.96;
@@ -60,15 +112,77 @@ impl Geometry {
         let gap = s(10.0);
         let btn_r = s(23.0);
         let arc_radius = outer_r + gap + btn_r;
+        // angular window: radial = full turn, slice 0 centered at the top;
+        // half = the hemisphere facing away from the anchored edge
+        let (a0, span) = match kind {
+            LayoutKind::Half => (
+                match pos {
+                    LayoutPos::Top => 0.0,           // spreads downward
+                    LayoutPos::Left => -PI / 2.0,    // spreads rightward
+                    LayoutPos::Right => PI / 2.0,    // spreads leftward
+                    _ => PI,                         // bottom: spreads upward
+                },
+                PI,
+            ),
+            _ => (0.0, TAU), // a0 set per-count in slice_at/angle_of (top-centered)
+        };
         Self {
+            kind,
+            pos,
             outer_r,
             inner_r,
             ring_r,
             icon_box,
+            a0,
+            span,
+            bar_pitch: icon_box + s(18.0),
+            bar_thick: icon_box + s(26.0),
+            bar_pad: s(16.0),
             arc_radius,
             arc_btn_r: btn_r,
             arc_band_inner: outer_r + s(3.0),
             arc_band_outer: arc_radius + btn_r + s(8.0),
+        }
+    }
+
+    /// True when the bar runs vertically (anchored to a side edge).
+    pub fn bar_vertical(&self) -> bool {
+        matches!(self.pos, LayoutPos::Left | LayoutPos::Right)
+    }
+
+    /// Bar length along its axis for `count` items.
+    pub fn bar_len(&self, count: usize) -> f32 {
+        count as f32 * self.bar_pitch + 2.0 * self.bar_pad
+    }
+
+    /// The menu's bounding box inside a `w`×`h` window. Radial: centered
+    /// square. Half: 2r square whose CENTER sits on the anchored edge's
+    /// midpoint. Bar: rect at the chosen position (margin s-scaled via pad).
+    pub fn menu_origin(&self, w: f32, h: f32, count: usize) -> (f32, f32) {
+        let m = self.bar_pad * 1.5; // edge margin for bars
+        match self.kind {
+            LayoutKind::Radial => (w / 2.0 - self.outer_r, h / 2.0 - self.outer_r),
+            LayoutKind::Half => match self.pos {
+                LayoutPos::Top => (w / 2.0 - self.outer_r, -self.outer_r),
+                LayoutPos::Left => (-self.outer_r, h / 2.0 - self.outer_r),
+                LayoutPos::Right => (w - self.outer_r, h / 2.0 - self.outer_r),
+                _ => (w / 2.0 - self.outer_r, h - self.outer_r),
+            },
+            LayoutKind::Bar => {
+                let len = self.bar_len(count);
+                let (bw, bh) = if self.bar_vertical() {
+                    (self.bar_thick, len)
+                } else {
+                    (len, self.bar_thick)
+                };
+                match self.pos {
+                    LayoutPos::Left => (m, h / 2.0 - bh / 2.0),
+                    LayoutPos::Right => (w - m - bw, h / 2.0 - bh / 2.0),
+                    LayoutPos::Top => (w / 2.0 - bw / 2.0, m),
+                    LayoutPos::Bottom => (w / 2.0 - bw / 2.0, h - m - bh),
+                    LayoutPos::Center => (w / 2.0 - bw / 2.0, h / 2.0 - bh / 2.0),
+                }
+            }
         }
     }
 
@@ -78,14 +192,32 @@ impl Geometry {
         (dx * dx + dy * dy).sqrt()
     }
 
+    /// The settings disc lives in the radial hole only.
     pub fn in_hole(&self, x: f32, y: f32) -> bool {
-        self.dist(x, y) < self.inner_r
+        match self.kind {
+            LayoutKind::Bar => false,
+            _ => self.dist(x, y) < self.inner_r,
+        }
     }
 
-    /// Nearest-center slice hit test (spec §3). -1 = hole / outside.
+    /// Nearest-center slice hit test (spec §3), local coords relative to
+    /// menu_origin. -1 = hole / outside.
     pub fn slice_at(&self, x: f32, y: f32, count: usize, follow_outside: bool) -> i32 {
         if count == 0 {
             return -1;
+        }
+        if self.kind == LayoutKind::Bar {
+            let len = self.bar_len(count);
+            let (along, across, thick) = if self.bar_vertical() {
+                (y, x - self.bar_thick / 2.0, self.bar_thick)
+            } else {
+                (x, y - self.bar_thick / 2.0, self.bar_thick)
+            };
+            if !follow_outside && (across.abs() > thick / 2.0 || !(0.0..=len).contains(&along)) {
+                return -1;
+            }
+            let idx = ((along - self.bar_pad) / self.bar_pitch).floor() as i64;
+            return idx.clamp(0, count as i64 - 1) as i32;
         }
         let d = self.dist(x, y);
         if d < self.inner_r {
@@ -95,9 +227,52 @@ impl Geometry {
             return -1;
         }
         let a = (y - self.outer_r).atan2(x - self.outer_r);
-        let seg = TAU / count as f32;
+        let seg = self.span / count as f32;
+        if self.kind == LayoutKind::Half {
+            // slices tile [a0, a0+span]; no wrap — clamp to the span ends
+            let rel = (a - self.a0).rem_euclid(TAU);
+            if rel > self.span && !follow_outside {
+                return -1;
+            }
+            let rel = if rel > self.span {
+                // outside the hemisphere with follow-outside: nearest end.
+                // Distance past the span end = rel - span; distance to the
+                // start (wrapping the rest of the circle) = TAU - rel.
+                if rel - self.span < TAU - rel { self.span } else { 0.0 }
+            } else {
+                rel
+            };
+            return ((rel / seg - 0.5).round() as i64).clamp(0, count as i64 - 1) as i32;
+        }
+        // radial: slice 0 centered at the top, indices clockwise
         let idx = ((a + PI / 2.0) / seg).round() as i64;
         idx.rem_euclid(count as i64) as i32
+    }
+
+    /// Center angle of slice `i` (radians) — mirrors the slint positioning.
+    pub fn angle_of(&self, i: usize, count: usize) -> f32 {
+        let seg = self.span / count.max(1) as f32;
+        match self.kind {
+            LayoutKind::Half => self.a0 + (i as f32 + 0.5) * seg,
+            _ => -PI / 2.0 + i as f32 * seg,
+        }
+    }
+
+    /// Item center in menu-local coords — for arc placement off-radial.
+    pub fn item_center(&self, i: usize, count: usize) -> (f32, f32) {
+        if self.kind == LayoutKind::Bar {
+            let along = self.bar_pad + (i as f32 + 0.5) * self.bar_pitch;
+            return if self.bar_vertical() {
+                (self.bar_thick / 2.0, along)
+            } else {
+                (along, self.bar_thick / 2.0)
+            };
+        }
+        let a = self.angle_of(i, count);
+        (
+            self.outer_r + self.ring_r * a.cos(),
+            self.outer_r + self.ring_r * a.sin(),
+        )
     }
 }
 
@@ -402,12 +577,35 @@ impl Ui {
         }
     }
 
+    fn layout_ints(geo: &Geometry) -> (i32, i32) {
+        let kind = match geo.kind {
+            LayoutKind::Radial => 0,
+            LayoutKind::Bar => 1,
+            LayoutKind::Half => 2,
+        };
+        let pos = match geo.pos {
+            LayoutPos::Center => 0,
+            LayoutPos::Left => 1,
+            LayoutPos::Right => 2,
+            LayoutPos::Top => 3,
+            LayoutPos::Bottom => 4,
+        };
+        (kind, pos)
+    }
+
     fn push_geometry(&self, w: &RingWindow) {
         let geo = *self.geo.borrow();
         w.set_outer_r(geo.outer_r);
         w.set_inner_r(geo.inner_r);
         w.set_ring_r(geo.ring_r);
         w.set_icon_box(geo.icon_box);
+        let (kind, pos) = Self::layout_ints(&geo);
+        w.set_menu_layout(kind);
+        w.set_menu_pos(pos);
+        w.set_a0_deg(geo.a0.to_degrees());
+        w.set_bar_pitch(geo.bar_pitch);
+        w.set_bar_thick(geo.bar_thick);
+        w.set_bar_pad(geo.bar_pad);
         w.set_arc_radius(geo.arc_radius);
         w.set_arc_btn_r(geo.arc_btn_r);
         w.set_arc_band_inner(geo.arc_band_inner);
@@ -421,6 +619,13 @@ impl Ui {
         w.set_pv_inner_r(pv.inner_r);
         w.set_pv_ring_r(pv.ring_r);
         w.set_pv_icon_box(pv.icon_box);
+        let (kind, pos) = Self::layout_ints(&pv);
+        w.set_pv_layout(kind);
+        w.set_pv_pos(pos);
+        w.set_pv_a0_deg(pv.a0.to_degrees());
+        w.set_pv_bar_pitch(pv.bar_pitch);
+        w.set_pv_bar_thick(pv.bar_thick);
+        w.set_pv_bar_pad(pv.bar_pad);
     }
 
     // --------------------------------------------------- model building
@@ -531,7 +736,15 @@ impl Ui {
         };
         let count = self.ring.borrow().len();
         let cur = win.get_sector_rotation();
-        let delta = rotation_delta(cur, idx, count);
+        // radial wraps (shortest path around the circle); half rings span a
+        // fixed 180° window, so the wedge tracks the slot directly
+        let geo = *self.geo.borrow();
+        let delta = if geo.kind == LayoutKind::Half {
+            let seg = geo.span.to_degrees() / count.max(1) as f32;
+            idx as f32 * seg - cur
+        } else {
+            rotation_delta(cur, idx, count)
+        };
         win.set_sector_rotation(cur + delta);
         win.set_active_index(idx as i32);
         // wedge takes the app's own accent when it has one
@@ -771,12 +984,14 @@ impl Ui {
     // ------------------------------------------------- input handlers
 
     fn wheel_local(self: &Rc<Self>, win: &RingWindow, x: f32, y: f32) -> (f32, f32) {
-        // the wheel is centered in the fullscreen window
+        // map window coords into the menu box (position depends on layout)
         let size = win.window().size();
         let sf = win.window().scale_factor();
         let (w, h) = (size.width as f32 / sf, size.height as f32 / sf);
         let geo = self.geo.borrow();
-        (x - (w / 2.0 - geo.outer_r), y - (h / 2.0 - geo.outer_r))
+        let count = self.ring.borrow().len();
+        let (ox, oy) = geo.menu_origin(w, h, count);
+        (x - ox, y - oy)
     }
 
     fn on_moved(self: &Rc<Self>, x: f32, y: f32) {
@@ -794,7 +1009,10 @@ impl Ui {
         if geo.in_hole(lx, ly) {
             win.set_hovered_index(-1);
             self.update_center_label(-1);
-            if !win.get_show_settings_btn() && !self.center_timer.running() {
+            if geo.kind == LayoutKind::Radial
+                && !win.get_show_settings_btn()
+                && !self.center_timer.running()
+            {
                 let this = Rc::downgrade(self);
                 self.center_timer.start(
                     slint::TimerMode::SingleShot,
@@ -1034,6 +1252,22 @@ impl Ui {
         let Some(win) = self.ring_handle() else {
             return;
         };
+        // anchor: radial arcs share the wheel center; bar/half arcs pop
+        // around the pressed item itself
+        let geo = *self.geo.borrow();
+        let size = win.window().size();
+        let sf = win.window().scale_factor();
+        let (w, h) = (size.width as f32 / sf, size.height as f32 / sf);
+        let count = self.ring.borrow().len();
+        let (ox, oy) = geo.menu_origin(w, h, count);
+        let (cx, cy) = if geo.kind == LayoutKind::Radial {
+            (w / 2.0, h / 2.0)
+        } else {
+            let (ix, iy) = geo.item_center(slice, count);
+            (ox + ix, oy + iy)
+        };
+        win.set_arc_cx(cx);
+        win.set_arc_cy(cy);
         win.set_arc_items(ModelRc::new(VecModel::from(items)));
         win.set_arc_label(entry.name.clone().into());
         win.set_arc_open(true);
@@ -1225,6 +1459,8 @@ impl Ui {
         sw.set_seg_bg_hex(s.seg_bg.clone().into());
         sw.set_hole_size(s.hole_size);
         sw.set_show_dots(s.show_dots);
+        sw.set_menu_layout_name(s.layout.clone().into());
+        sw.set_menu_pos_name(s.layout_pos.clone().into());
         sw.set_shortcuts_enabled(s.shortcuts_enabled);
         sw.set_persist_binds(s.persist_binds);
         sw.set_sc_apps(s.shortcuts.apps.clone().into());
@@ -1596,6 +1832,8 @@ impl Ui {
                     "showLabels" => s.show_labels = v == "true",
                     "showDots" => s.show_dots = v == "true",
                     "followOutside" => s.follow_outside = v == "true",
+                    "layout" => s.layout = v,
+                    "layoutPos" => s.layout_pos = v,
                     "theme" => s.theme = v,
                     "shortcutsEnabled" => s.shortcuts_enabled = v == "true",
                     "persistBinds" => s.persist_binds = v == "true",
@@ -1694,6 +1932,65 @@ mod tests {
         assert_eq!(g.icon_box, 59.0);
         assert!((g.outer_r - 221.64).abs() < 0.01, "outer {}", g.outer_r);
         assert!((g.inner_r - 111.9).abs() < 0.01, "inner {}", g.inner_r);
+    }
+
+    fn geo_for(layout: &str, pos: &str) -> Geometry {
+        let mut s = Settings::default();
+        s.layout = layout.into();
+        s.layout_pos = pos.into();
+        Geometry::compute(&s, &SkinData::default(), 1.0)
+    }
+
+    #[test]
+    fn layout_parsing_and_validation() {
+        assert_eq!(parse_layout("bar", "left"), (LayoutKind::Bar, LayoutPos::Left));
+        // half rings can't float mid-screen
+        assert_eq!(parse_layout("half", "center"), (LayoutKind::Half, LayoutPos::Bottom));
+        // unknown values degrade to the defaults
+        assert_eq!(parse_layout("blob", "wat"), (LayoutKind::Radial, LayoutPos::Center));
+    }
+
+    #[test]
+    fn bar_hit_testing() {
+        let g = geo_for("bar", "center");
+        let mid = g.bar_thick / 2.0;
+        // slot centers along the bar
+        for i in 0..4 {
+            let x = g.bar_pad + (i as f32 + 0.5) * g.bar_pitch;
+            assert_eq!(g.slice_at(x, mid, 4, false), i as i32, "slot {i}");
+        }
+        // outside the thickness -> miss; follow-outside -> nearest slot
+        let x0 = g.bar_pad + 0.5 * g.bar_pitch;
+        assert_eq!(g.slice_at(x0, -g.bar_thick, 4, false), -1);
+        assert_eq!(g.slice_at(x0, -g.bar_thick, 4, true), 0);
+        // beyond the end clamps with follow-outside
+        assert_eq!(g.slice_at(g.bar_len(4) + 100.0, mid, 4, true), 3);
+        // vertical bars project on y
+        let v = geo_for("bar", "left");
+        assert!(v.bar_vertical());
+        let y2 = v.bar_pad + 2.5 * v.bar_pitch;
+        assert_eq!(v.slice_at(v.bar_thick / 2.0, y2, 4, false), 2);
+        // bars have no hole
+        assert!(!v.in_hole(v.bar_thick / 2.0, y2));
+    }
+
+    #[test]
+    fn half_ring_hit_testing() {
+        // bottom-anchored: span [180°, 360°], slice centers at 202.5°...
+        let g = geo_for("half", "bottom");
+        let c = g.outer_r;
+        for i in 0..4 {
+            let a = g.angle_of(i, 4);
+            let (x, y) = (c + g.ring_r * a.cos(), c + g.ring_r * a.sin());
+            assert_eq!(g.slice_at(x, y, 4, false), i as i32, "slice {i}");
+        }
+        // the hidden hemisphere (below the anchor edge) is a miss...
+        assert_eq!(g.slice_at(c, c + g.ring_r, 4, false), -1);
+        // ...unless follow-outside clamps to the nearest span end
+        let end = g.slice_at(c + g.ring_r * 0.1, c + g.ring_r, 4, true);
+        assert_eq!(end, 3); // just past the right end of the span
+        // hole still rejects
+        assert_eq!(g.slice_at(c, c - g.inner_r * 0.5, 4, false), -1);
     }
 
     #[test]

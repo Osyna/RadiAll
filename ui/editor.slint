@@ -553,6 +553,8 @@ export component Editor {
     in property <bool> follow-outside;
     in property <float> hole-size;
     in property <bool> show-dots;
+    in property <string> menu-layout-name: "radial";  // "radial" | "bar" | "half"
+    in property <string> menu-pos-name: "center";
     // section geometry (design px) + inactive-section fill
     in property <float> sector-radius;
     in property <float> seg-radius;
@@ -1185,6 +1187,85 @@ export component Editor {
                         padding: Skin.s(4);
                         padding-right: Skin.s(12);
                         spacing: Skin.s(10);
+
+                        Card {
+                            title: "LAYOUT";
+                            HorizontalLayout {
+                                spacing: Skin.s(6);
+                                alignment: start;
+                                for shape[si] in ["radial", "bar", "half"]: Rectangle {
+                                    width: Skin.s(84);
+                                    height: Skin.s(28);
+                                    border-radius: Skin.s(7);
+                                    background: root.menu-layout-name == shape
+                                        ? Skin.accent
+                                        : (sh-ta.has-hover ? Skin.tint(0.10) : Skin.tint(0.05));
+                                    animate background { duration: 120ms; }
+                                    Text {
+                                        text: si == 0 ? "Radial" : si == 1 ? "Bar" : "Half ring";
+                                        color: root.menu-layout-name == shape ? #ffffff : Skin.fg;
+                                        font-size: Skin.s(12);
+                                        font-weight: 500;
+                                        width: 100%;
+                                        height: 100%;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+                                    sh-ta := TouchArea {
+                                        mouse-cursor: pointer;
+                                        clicked => {
+                                            blur.focus();
+                                            root.set-setting("layout", shape);
+                                            // half rings can't float mid-screen
+                                            if (shape == "half" && root.menu-pos-name == "center") {
+                                                root.set-setting("layoutPos", "bottom");
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if root.menu-layout-name != "radial": HorizontalLayout {
+                                spacing: Skin.s(6);
+                                alignment: start;
+                                for pos in ["center", "left", "right", "top", "bottom"]: Rectangle {
+                                    // half rings anchor to an edge: no center
+                                    visible: !(root.menu-layout-name == "half" && pos == "center");
+                                    width: self.visible ? Skin.s(66) : 0;
+                                    height: Skin.s(26);
+                                    border-radius: Skin.s(7);
+                                    background: root.menu-pos-name == pos
+                                        ? Skin.accent
+                                        : (po-ta.has-hover ? Skin.tint(0.10) : Skin.tint(0.05));
+                                    animate background { duration: 120ms; }
+                                    Text {
+                                        text: pos;
+                                        color: root.menu-pos-name == pos ? #ffffff : Skin.fg;
+                                        font-size: Skin.s(11);
+                                        width: 100%;
+                                        height: 100%;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+                                    po-ta := TouchArea {
+                                        mouse-cursor: pointer;
+                                        clicked => {
+                                            blur.focus();
+                                            root.set-setting("layoutPos", pos);
+                                        }
+                                    }
+                                }
+                            }
+                            Text {
+                                text: root.menu-layout-name == "radial"
+                                    ? "The classic donut — items on a full circle around the cursor."
+                                    : root.menu-layout-name == "bar"
+                                        ? "A linear dock. Position it against an edge or floating dead-center."
+                                        : "Half a wheel anchored flush to a screen edge.";
+                                color: Skin.fg-dim;
+                                font-size: Skin.s(10);
+                                wrap: word-wrap;
+                            }
+                        }
 
                         Card {
                             title: "THEME";
