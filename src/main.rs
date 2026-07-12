@@ -11,6 +11,8 @@ mod icons;
 mod ipc;
 mod ring;
 mod shortcuts;
+mod shortcuts_portal;
+mod shortcuts_x11;
 mod theme;
 mod ui;
 
@@ -90,8 +92,14 @@ fn run_daemon() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut comp = compositor::detect();
     log::info!("compositor backend: {}", comp.backend());
-    let can_manage = comp.can_manage_keybinds();
-    shortcuts::apply_shortcuts(&settings, can_manage);
+
+    // Global shortcuts: hyprctl binds exec the CLI; portal/X11 providers fire
+    // in-process through the same dispatch the socket and tray use.
+    let sc = shortcuts::Shortcuts::start(shortcuts::detect_provider(), &settings, |mode| {
+        if let Some(cmd) = ipc::Command::parse(mode) {
+            dispatch(cmd);
+        }
+    });
     let overlay_ready = comp.setup_overlay();
 
     // compositor events -> UI thread
@@ -108,7 +116,9 @@ fn run_daemon() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 compositor::CompositorEvent::ConfigReloaded => with_ui(|ui| {
                     let core = ui.core.borrow();
-                    shortcuts::apply_shortcuts(&core.settings, core.comp.can_manage_keybinds());
+                    if let Some(sc) = &core.shortcuts {
+                        sc.apply(&core.settings);
+                    }
                 }),
             });
         }
@@ -121,6 +131,7 @@ fn run_daemon() -> Result<(), Box<dyn std::error::Error>> {
     slint::invoke_from_event_loop(move || {
         let mut core = ring::Core::new(settings, app_list, index, comp);
         core.overlay_ready = overlay_ready;
+        core.shortcuts = Some(sc);
         core.icons = icons::IconLib::scan();
         let ui = match ui::Ui::new(core) {
             Ok(ui) => ui,
@@ -238,7 +249,20 @@ fn main() {
         "apps" => send_or_die(ipc::Command::Apps),
         "windows" => send_or_die(ipc::Command::Windows),
         "actions" => send_or_die(ipc::Command::Actions),
-        "settings" => send_or_die(ipc::Command::Settings),
+        // The desktop-entry entry point: humans click this with no daemon
+        // running (fresh login, crashed daemon), so heal instead of dying.
+        "settings" => {
+            if !ipc::ping() {
+                start_detached();
+                for _ in 0..30 {
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    if ipc::ping() {
+                        break;
+                    }
+                }
+            }
+            send_or_die(ipc::Command::Settings);
+        }
         "daemon" => {
             if let Err(e) = run_daemon() {
                 eprintln!("radiall: {e}");

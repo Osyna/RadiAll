@@ -1,13 +1,18 @@
-//! Shortcut-string handling ("ctrl+shift+r") and Hyprland keybind management.
+//! Shortcut-string handling ("ctrl+shift+r") and global-shortcut providers.
 //!
-//! Standalone deviation from v1: binds run `exec, radiall --<mode>` instead of
-//! the hyprland-global-shortcuts protocol (`global, launcher:<mode>`), so the
-//! same CLI path serves every compositor. Overwriting the old binds file
-//! migrates v1 installs automatically.
+//! Combo parsing plus the Hyprland keybind path live here; the portal and
+//! X11 providers live in `shortcuts_portal` / `shortcuts_x11`. `Shortcuts`
+//! wraps whichever provider `detect_provider()` picked behind one handle.
+//!
+//! Standalone deviation from v1: Hyprland binds run `exec, radiall --<mode>`
+//! instead of the hyprland-global-shortcuts protocol (`global,
+//! launcher:<mode>`), so the same CLI path serves every compositor.
+//! Overwriting the old binds file migrates v1 installs automatically.
 
 use crate::config::Settings;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::Arc;
 
 const MOD_NAMES: [&str; 6] = ["ctrl", "control", "alt", "shift", "super", "meta"];
 
@@ -58,9 +63,9 @@ pub fn binds_file() -> PathBuf {
     hypr_dir().join("launcher-binds.conf")
 }
 
-const MODES: [&str; 3] = ["apps", "windows", "actions"];
+pub(crate) const MODES: [&str; 3] = ["apps", "windows", "actions"];
 
-fn combo_for<'s>(settings: &'s Settings, mode: &str) -> &'s str {
+pub(crate) fn combo_for<'s>(settings: &'s Settings, mode: &str) -> &'s str {
     match mode {
         "windows" => &settings.shortcuts.windows,
         "actions" => &settings.shortcuts.actions,
@@ -208,6 +213,145 @@ pub fn update_shortcut(settings: &Settings, can_manage: bool, mode: &str, old: &
     }
 }
 
+// ------------------------------------------------------- provider layer
+
+/// Callback the non-Hyprland providers invoke when a shortcut fires.
+/// Receives "apps" | "windows" | "actions".
+pub(crate) type FireFn = Arc<dyn Fn(&'static str) + Send + Sync>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderKind {
+    /// Hyprland: hyprctl-managed binds that exec the CLI (today's path).
+    Hyprctl,
+    /// XDG desktop portal org.freedesktop.portal.GlobalShortcuts.
+    Portal,
+    /// Plain X11 XGrabKey on the root window.
+    X11,
+    /// No provider; the user binds `radiall --<mode>` in their WM config.
+    None,
+}
+
+/// RADIALL_SHORTCUTS=hyprctl|portal|x11|none -> kind; anything else None.
+fn provider_override(raw: &str) -> Option<ProviderKind> {
+    match raw.trim().to_lowercase().as_str() {
+        "hyprctl" | "hyprland" => Some(ProviderKind::Hyprctl),
+        "portal" => Some(ProviderKind::Portal),
+        "x11" => Some(ProviderKind::X11),
+        "none" | "off" => Some(ProviderKind::None),
+        _ => None,
+    }
+}
+
+/// Pick the shortcut provider for this session. RADIALL_SHORTCUTS wins
+/// unconditionally; otherwise: Hyprland -> hyprctl binds, other Wayland ->
+/// portal if the session bus offers GlobalShortcuts, bare X11 -> XGrabKey.
+/// Wayland without the portal yields None — X11 grabs through XWayland
+/// would only fire while an X11 client is focused, which reads as broken.
+pub fn detect_provider() -> ProviderKind {
+    if let Ok(raw) = std::env::var("RADIALL_SHORTCUTS") {
+        match provider_override(&raw) {
+            Some(kind) => {
+                log::info!("shortcuts: RADIALL_SHORTCUTS={raw} forces {kind:?}");
+                return kind;
+            }
+            None => log::warn!(
+                "shortcuts: RADIALL_SHORTCUTS={raw:?} not one of hyprctl|portal|x11|none; autodetecting"
+            ),
+        }
+    }
+    let set = |k: &str| std::env::var(k).is_ok_and(|v| !v.is_empty());
+    if set("HYPRLAND_INSTANCE_SIGNATURE") {
+        ProviderKind::Hyprctl
+    } else if set("WAYLAND_DISPLAY") {
+        if crate::shortcuts_portal::available() {
+            ProviderKind::Portal
+        } else {
+            ProviderKind::None
+        }
+    } else if set("DISPLAY") {
+        ProviderKind::X11
+    } else {
+        ProviderKind::None
+    }
+}
+
+/// The running provider. Hyprctl keeps no state (binds live in the
+/// compositor); portal/X11 hold a handle to their background thread.
+enum Provider {
+    Hyprctl,
+    Portal(crate::shortcuts_portal::PortalProvider),
+    X11(crate::shortcuts_x11::X11Provider),
+    Inert,
+}
+
+/// Handle owning the active global-shortcut provider.
+pub struct Shortcuts {
+    kind: ProviderKind,
+    provider: Provider,
+}
+
+impl Shortcuts {
+    /// Start `kind` and sync it to `settings`. `fire` is called (from a
+    /// provider thread) with the mode of a triggered shortcut; the Hyprctl
+    /// provider never fires — its binds exec the CLI directly. A provider
+    /// that fails to start degrades to `ProviderKind::None` with a warning;
+    /// the daemon keeps running either way.
+    pub fn start(
+        kind: ProviderKind,
+        settings: &Settings,
+        fire: impl Fn(&'static str) + Send + Sync + 'static,
+    ) -> Shortcuts {
+        let fire: FireFn = Arc::new(fire);
+        let (kind, provider) = match kind {
+            ProviderKind::Hyprctl => {
+                apply_shortcuts(settings, true);
+                (ProviderKind::Hyprctl, Provider::Hyprctl)
+            }
+            ProviderKind::Portal => match crate::shortcuts_portal::PortalProvider::start(settings, fire) {
+                Some(p) => (ProviderKind::Portal, Provider::Portal(p)),
+                None => (ProviderKind::None, Provider::Inert),
+            },
+            ProviderKind::X11 => match crate::shortcuts_x11::X11Provider::start(settings, fire) {
+                Some(p) => (ProviderKind::X11, Provider::X11(p)),
+                None => (ProviderKind::None, Provider::Inert),
+            },
+            ProviderKind::None => (ProviderKind::None, Provider::Inert),
+        };
+        let s = Shortcuts { kind, provider };
+        log::info!("shortcuts: provider {}", s.backend_name());
+        s
+    }
+
+    /// Re-sync bindings after a settings change (combos edited, master
+    /// toggle flipped).
+    pub fn apply(&self, settings: &Settings) {
+        match &self.provider {
+            Provider::Hyprctl => apply_shortcuts(settings, true),
+            Provider::Portal(p) => p.apply(settings),
+            Provider::X11(p) => p.apply(settings),
+            Provider::Inert => {}
+        }
+    }
+
+    pub fn kind(&self) -> ProviderKind {
+        self.kind
+    }
+
+    pub fn backend_name(&self) -> &'static str {
+        match self.kind {
+            ProviderKind::Hyprctl => "hyprland",
+            ProviderKind::Portal => "portal",
+            ProviderKind::X11 => "x11",
+            ProviderKind::None => "none",
+        }
+    }
+
+    /// Only the Hyprctl provider can persist binds to a config file.
+    pub fn persist_supported(&self) -> bool {
+        self.kind == ProviderKind::Hyprctl
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -239,5 +383,17 @@ mod tests {
         assert!(line.ends_with(" --apps\n"), "{line}");
         // the exec target is the running binary (or bare radiall fallback)
         assert!(line.contains("radiall"), "{line}");
+    }
+
+    #[test]
+    fn provider_override_parsing() {
+        assert_eq!(provider_override("hyprctl"), Some(ProviderKind::Hyprctl));
+        assert_eq!(provider_override("hyprland"), Some(ProviderKind::Hyprctl));
+        assert_eq!(provider_override(" Portal "), Some(ProviderKind::Portal));
+        assert_eq!(provider_override("X11"), Some(ProviderKind::X11));
+        assert_eq!(provider_override("none"), Some(ProviderKind::None));
+        assert_eq!(provider_override("off"), Some(ProviderKind::None));
+        assert_eq!(provider_override("kglobalaccel"), None);
+        assert_eq!(provider_override(""), None);
     }
 }

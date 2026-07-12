@@ -4125,7 +4125,10 @@ dependencies = [
  "slint",
  "slint-build",
  "wayland-client",
+ "wayland-protocols-plasma",
  "wayland-protocols-wlr",
+ "x11rb",
+ "zbus",
 ]
 
 [[package]]

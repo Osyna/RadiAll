@@ -566,7 +566,8 @@ export component Editor {
     in property <string> sc-apps;
     in property <string> sc-windows;
     in property <string> sc-actions;
-    in property <bool> can-manage-keybinds;    // false -> show bind-it-yourself hint
+    in property <string> keybind-backend: "none"; // "hyprland" | "portal" | "x11" | "none"
+    private property <bool> can-manage-keybinds: root.keybind-backend != "none";
     in property <bool> can-send-keys;          // false -> custom key-combo actions warn
 
     // ---- callbacks into Rust ----
@@ -1632,7 +1633,7 @@ export component Editor {
                             if !root.can-manage-keybinds: VerticalLayout {
                                 spacing: Skin.s(6);
                                 Text {
-                                    text: "Your compositor has no global-shortcut API RadiAll can drive. Bind these commands in your compositor config instead — they reach the running instance:";
+                                    text: "No global-shortcut backend is available in this session. Bind these commands in your desktop's own shortcut settings instead — they reach the running instance:";
                                     color: Skin.fg-dim;
                                     font-size: Skin.s(12);
                                     wrap: word-wrap;
@@ -1657,7 +1658,7 @@ export component Editor {
                                             root.set-setting("shortcutsEnabled", v ? "true" : "false");
                                         }
                                     }
-                                    if root.shortcuts-enabled: ToggleChip {
+                                    if root.shortcuts-enabled && root.keybind-backend == "hyprland": ToggleChip {
                                         label: "Bind in Hyprland";
                                         on: root.persist-binds;
                                         toggled(v) => {
@@ -1668,9 +1669,13 @@ export component Editor {
                                 Text {
                                     text: !root.shortcuts-enabled
                                         ? "Off — RadiAll grabs no keys."
-                                        : root.persist-binds
-                                            ? "Keys are written to ~/.config/hypr/launcher-binds.conf and survive reloads."
-                                            : "Keys are applied live via hyprctl — your Hyprland config is left untouched.";
+                                        : root.keybind-backend == "hyprland"
+                                            ? (root.persist-binds
+                                                ? "Keys are written to ~/.config/hypr/launcher-binds.conf and survive reloads."
+                                                : "Keys are applied live via hyprctl — your Hyprland config is left untouched.")
+                                        : root.keybind-backend == "portal"
+                                            ? "Keys go through your desktop's global-shortcuts portal (GNOME / KDE). The desktop may show a confirmation dialog and lets you re-map them in its own settings."
+                                            : "Keys are grabbed directly from the X server — they work in every X11 desktop.";
                                     color: Skin.fg-dim;
                                     font-size: Skin.s(10);
                                     wrap: word-wrap;

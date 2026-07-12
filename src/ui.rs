@@ -1183,7 +1183,7 @@ impl Ui {
         sw.set_sc_apps(s.shortcuts.apps.clone().into());
         sw.set_sc_windows(s.shortcuts.windows.clone().into());
         sw.set_sc_actions(s.shortcuts.actions.clone().into());
-        sw.set_can_manage_keybinds(core.comp.can_manage_keybinds());
+        sw.set_keybind_backend(core.shortcuts.as_ref().map_or("none", |s| s.backend_name()).into());
         sw.set_can_send_keys(core.comp.can_send_keys());
         drop(core);
         self.refresh_selected_actions();
@@ -1598,7 +1598,9 @@ impl Ui {
                 ui.save_settings_debounced();
                 if matches!(key.as_str(), "shortcutsEnabled" | "persistBinds") {
                     let core = ui.core.borrow();
-                    shortcuts::apply_shortcuts(&core.settings, core.comp.can_manage_keybinds());
+                    if let Some(sc) = &core.shortcuts {
+                        sc.apply(&core.settings);
+                    }
                 }
                 ui.sync_skin();
                 ui.sync_geometry();
@@ -1622,12 +1624,15 @@ impl Ui {
                 }
                 ui.save_settings_debounced();
                 let core = ui.core.borrow();
-                shortcuts::update_shortcut(
-                    &core.settings,
-                    core.comp.can_manage_keybinds(),
-                    &mode,
-                    &old,
-                );
+                match &core.shortcuts {
+                    // hyprctl: precise unbind of the old combo, rebind the new
+                    Some(sc) if sc.kind() == shortcuts::ProviderKind::Hyprctl => {
+                        shortcuts::update_shortcut(&core.settings, true, &mode, &old);
+                    }
+                    // portal / X11: providers re-sync the full set
+                    Some(sc) => sc.apply(&core.settings),
+                    None => {}
+                }
                 drop(core);
                 ui.refresh_editor_models();
             }
@@ -1654,7 +1659,9 @@ impl Ui {
                 ui.core.borrow_mut().settings = crate::config::Settings::default();
                 config::save_settings(&ui.core.borrow().settings);
                 let core = ui.core.borrow();
-                shortcuts::apply_shortcuts(&core.settings, core.comp.can_manage_keybinds());
+                if let Some(sc) = &core.shortcuts {
+                    sc.apply(&core.settings);
+                }
                 drop(core);
                 ui.sync_all();
             }

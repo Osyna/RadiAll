@@ -8,8 +8,9 @@
 
 A radial app launcher, window switcher, and per-window action menu for Linux.
 One standalone Rust binary, rendered with [Slint](https://slint.dev) — no
-shell framework, no QML runtime, no Python. Runs on Hyprland, sway, KDE,
-GNOME, and X11; a Windows port is on the roadmap.
+shell framework, no QML runtime, no Python. Runs on Hyprland, sway and other
+wlroots compositors, KDE (Wayland & X11), GNOME, and every X11 desktop;
+Windows and macOS ports are on the roadmap.
 
 <p>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT license"></a>
@@ -100,18 +101,26 @@ to the compositor, and draws a transparent screen-covering overlay with Slint
 when a ring opens. `radiall --apps` (and friends) poke the daemon over a unix
 socket — that's why any DE that can bind a key to a command can drive it.
 
-Compositor integration is an adapter behind one trait:
+Compositor integration is an adapter behind one trait, picked automatically
+per session:
 
-| Backend | Window list | Focus/close/fullscreen | Float | Send-keys | Auto keybinds |
-|---|---|---|---|---|---|
-| Hyprland (IPC) | ✓ | ✓ | ✓ | ✓ | ✓ |
-| wlroots (`wlr-foreign-toplevel`) — sway, river, Wayfire… | ✓ | ✓ | — | — | — |
-| GNOME Wayland, X11, others | — | — | — | — | — |
+| Backend | Window list | Focus/close/fullscreen | Float | Send-keys |
+|---|---|---|---|---|
+| Hyprland (IPC) | ✓ | ✓ | ✓ | ✓ |
+| wlroots (`wlr-foreign-toplevel`) — sway, river, Wayfire, labwc… | ✓ | ✓ | — | — |
+| KDE Plasma Wayland (`plasma-window-management`) | ✓ | ✓ | — | — |
+| Any X11 WM (EWMH) — KDE-X11, XFCE, Cinnamon, MATE, i3, GNOME-X11… | ✓ | ✓ | — | — |
+| GNOME Wayland | — | — | — | — |
 
-Where the compositor offers nothing, the apps ring still works fully — the
-windows/actions rings degrade gracefully. On Hyprland the overlay is a
-floating pinned window sized by window rules; elsewhere it falls back to a
-fullscreen surface.
+Global shortcuts pick a provider the same way: **hyprctl** binds on Hyprland,
+the **XDG global-shortcuts portal** on GNOME / KDE Wayland (your desktop may
+ask once to confirm), **X11 key grabs** on any X11 desktop. No provider?
+Bind `radiall --apps` to a key yourself — the CLI reaches the daemon anywhere.
+
+Where the compositor offers nothing (GNOME Wayland has no window-listing
+protocol), the apps ring still works fully — the windows/actions rings degrade
+gracefully. On Hyprland the overlay is a floating pinned window sized by
+window rules; elsewhere it falls back to a fullscreen surface.
 
 State is JSON in `~/.config/radiall/` (`settings.json`, `apps.json`,
 `themes/*.json`), easy to read and commit. Configs from the old

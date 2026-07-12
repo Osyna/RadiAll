@@ -101,6 +101,9 @@ pub struct Core {
     /// itself takes keyboard focus right after, so building the ring from
     /// the live active window would immediately wipe it. Frozen per open.
     pub actions_target: Option<FocusedApp>,
+    /// Global-shortcut provider handle (hyprctl / portal / X11 grabs).
+    /// None until the daemon wires it in main.rs — and in unit tests.
+    pub shortcuts: Option<crate::shortcuts::Shortcuts>,
 }
 
 impl Core {
@@ -116,6 +119,7 @@ impl Core {
             win_sel: HashMap::new(),
             overlay_ready: false,
             actions_target: None,
+            shortcuts: None,
         }
     }
 

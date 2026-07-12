@@ -1,17 +1,27 @@
-//! Compositor adapter. RadiAll is Hyprland-first but runs on any Wayland
-//! compositor; everything compositor-specific lives behind this trait so the
-//! rest of the app is generic (and a Win32 adapter can slot in later).
+//! Compositor adapter. RadiAll is Hyprland-first but runs on any Linux
+//! session; everything compositor-specific lives behind this trait so the
+//! rest of the app is generic (and Win32 / macOS adapters can slot in later).
+//!
+//! Linux coverage:
+//!   - Hyprland            -> IPC socket (full control incl. float/send-keys)
+//!   - wlroots compositors -> wlr-foreign-toplevel-management (sway, river,
+//!                            Wayfire, labwc, niri, ...)
+//!   - KDE Plasma Wayland  -> org_kde_plasma_window_management
+//!   - any X11 WM          -> EWMH (KDE-X11, XFCE, Cinnamon, MATE, i3,
+//!                            GNOME-X11, ...)
+//!   - GNOME Wayland       -> no window-listing protocol exists; the apps
+//!                            ring works fully, windows/actions rings degrade
 //!
 //! Capabilities mirror the old Compositor.qml singleton:
-//!   - window listing / focus / close / fullscreen -> Hyprland IPC or
-//!     wlr-foreign-toplevel-management
+//!   - window listing / focus / close / fullscreen -> per-adapter
 //!   - float + send-keys are Hyprland-only          -> guarded by can_float / can_send_keys
-//!   - global keybinds are Hyprland-only            -> guarded by can_manage_keybinds
-//!     (elsewhere, users bind their compositor key to `radiall --apps`, which
-//!      reaches the running daemon over the unix socket — see ipc.rs)
+//!   - global keybinds live in shortcuts.rs providers (hyprctl / XDG portal /
+//!     X11 grabs); users can always bind `radiall --apps` manually instead
 
 mod hyprland;
+mod plasma;
 mod wlr;
+mod x11;
 
 use std::sync::mpsc::Sender;
 
@@ -110,18 +120,36 @@ impl Compositor for NullCompositor {
 }
 
 /// Pick the best adapter for the current session.
+///
+/// Wayland: hyprland (env-detected) -> wlr-foreign-toplevel -> plasma.
+/// No Wayland but X11: EWMH. An XWayland DISPLAY under a Wayland session is
+/// deliberately NOT used as a fallback — it would list only XWayland windows
+/// and silently miss every native client, which is worse than degrading.
 pub fn detect() -> Box<dyn Compositor> {
+    let wayland = std::env::var_os("WAYLAND_DISPLAY").is_some();
+    let x11 = std::env::var_os("DISPLAY").is_some();
+
     if std::env::var("HYPRLAND_INSTANCE_SIGNATURE").is_ok() {
         match hyprland::HyprlandCompositor::connect() {
             Ok(c) => return Box::new(c),
             Err(e) => log::warn!("hyprland adapter failed ({e}), trying wlr"),
         }
     }
-    match wlr::WlrCompositor::connect() {
-        Ok(c) => Box::new(c),
-        Err(e) => {
-            log::warn!("no window-listing protocol available ({e}); windows/actions rings degrade");
-            Box::new(NullCompositor)
+    if wayland {
+        match wlr::WlrCompositor::connect() {
+            Ok(c) => return Box::new(c),
+            Err(e) => log::debug!("wlr-foreign-toplevel unavailable ({e}), trying plasma"),
+        }
+        match plasma::PlasmaCompositor::connect() {
+            Ok(c) => return Box::new(c),
+            Err(e) => log::debug!("plasma window-management unavailable ({e})"),
+        }
+    } else if x11 {
+        match x11::X11Compositor::connect() {
+            Ok(c) => return Box::new(c),
+            Err(e) => log::warn!("x11 adapter failed ({e})"),
         }
     }
+    log::warn!("no window-listing protocol available; windows/actions rings degrade");
+    Box::new(NullCompositor)
 }
