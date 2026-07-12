@@ -729,33 +729,38 @@ export component Editor {
                             vertical-stretch: 1;
                             for app[i] in root.apps: Rectangle {
                                 height: Skin.s(46);
-                                // drop indicator: accent line above/below the
-                                // target row (insertion side depends on drag
-                                // direction), drawn per-row so it survives
-                                // ListView virtualization
-                                if root.drag-from >= 0 && root.drag-to == i && root.drag-to < root.drag-from: Rectangle {
-                                    y: 0;
-                                    width: parent.width - Skin.s(6);
-                                    height: 2px;
-                                    background: Skin.accent;
-                                }
-                                if root.drag-from >= 0 && root.drag-to == i && root.drag-to > root.drag-from: Rectangle {
-                                    y: parent.height - 2px;
-                                    width: parent.width - Skin.s(6);
-                                    height: 2px;
-                                    background: Skin.accent;
-                                }
-                                Rectangle {
-                                    y: Skin.s(2);
+                                clip: false;
+                                card := Rectangle {
+                                    // physical DnD: neighbors animate aside to
+                                    // open the drop gap; the dragged card rides
+                                    // the pointer directly (base-y animated,
+                                    // drag offset raw so it never lags)
+                                    private property <bool> dragging: root.drag-from == i;
+                                    private property <length> shift:
+                                        root.drag-from >= 0 && !self.dragging
+                                            && i > root.drag-from && i <= root.drag-to
+                                        ? -Skin.s(46)
+                                        : root.drag-from >= 0 && !self.dragging
+                                            && i >= root.drag-to && i < root.drag-from
+                                        ? Skin.s(46)
+                                        : 0;
+                                    private property <length> base-y: Skin.s(2) + self.shift;
+                                    animate base-y { duration: 140ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
+                                    y: self.base-y + (self.dragging ? app-ta.mouse-y - app-ta.press-y : 0);
                                     width: parent.width - Skin.s(6);
                                     height: Skin.s(42);
                                     border-radius: Skin.s(10);
-                                    opacity: root.drag-from == i ? 0.45 : 1.0;
-                                    background: i == root.selected-app
-                                        ? Skin.tint(0.09)
-                                        : (app-ta.has-hover ? Skin.tint(0.07) : Skin.tint(0.035));
-                                    border-width: i == root.selected-app ? 1px : 0;
+                                    opacity: self.dragging ? 0.92 : 1.0;
+                                    background: self.dragging
+                                        ? Skin.tint(0.12)
+                                        : i == root.selected-app
+                                            ? Skin.tint(0.09)
+                                            : (app-ta.has-hover && root.drag-from == -1 ? Skin.tint(0.07) : Skin.tint(0.035));
+                                    border-width: self.dragging || i == root.selected-app ? 1px : 0;
                                     border-color: Skin.accent;
+                                    drop-shadow-color: self.dragging ? #00000073 : transparent;
+                                    drop-shadow-blur: self.dragging ? Skin.s(10) : 0;
+                                    drop-shadow-offset-y: self.dragging ? Skin.s(4) : 0;
                                     HorizontalLayout {
                                         padding-left: Skin.s(10);
                                         padding-right: Skin.s(8);
@@ -788,38 +793,48 @@ export component Editor {
                                         // grip hint: rows are draggable
                                         Text {
                                             text: "≡";
-                                            color: app-ta.has-hover ? Skin.tint(0.45) : Skin.tint(0.18);
+                                            color: app-ta.has-hover || card.dragging ? Skin.tint(0.5) : Skin.tint(0.18);
                                             font-size: Skin.s(13);
                                             vertical-alignment: center;
                                         }
                                     }
-                                    app-ta := TouchArea {
-                                        private property <length> press-y;
-                                        mouse-cursor: root.drag-from == i ? MouseCursor.grabbing : MouseCursor.pointer;
-                                        clicked => {
+                                }
+                                // input lives on the STATIC row (not the moving
+                                // card): mouse-y accumulates in row coords, so
+                                // the slot math and the ride-along offset both
+                                // stay linear while the card follows the pointer
+                                app-ta := TouchArea {
+                                    private property <length> press-y;
+                                    private property <bool> did-drag: false;
+                                    mouse-cursor: root.drag-from == i ? MouseCursor.grabbing : MouseCursor.pointer;
+                                    clicked => {
+                                        // a completed drag must not re-select a stale index
+                                        if (!self.did-drag) {
                                             blur.focus();
                                             root.select-app(i);
                                         }
-                                        pointer-event(e) => {
-                                            if (e.kind == PointerEventKind.down) {
-                                                self.press-y = self.mouse-y;
-                                            } else if (e.kind == PointerEventKind.move && self.pressed) {
-                                                // lift after a small threshold, then track the slot
-                                                if (root.drag-from == -1 && Math.abs((self.mouse-y - self.press-y) / 1px) > Skin.s(6) / 1px) {
-                                                    root.drag-from = i;
-                                                }
-                                                if (root.drag-from == i) {
-                                                    root.drag-to = Math.clamp(
-                                                        i + Math.round((self.mouse-y - Skin.s(46) / 2) / Skin.s(46)),
-                                                        0, root.apps.length - 1);
-                                                }
-                                            } else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) {
-                                                if (root.drag-from == i && root.drag-to >= 0 && root.drag-to != i) {
-                                                    root.reorder-app(i, root.drag-to);
-                                                }
-                                                root.drag-from = -1;
-                                                root.drag-to = -1;
+                                    }
+                                    pointer-event(e) => {
+                                        if (e.kind == PointerEventKind.down) {
+                                            self.press-y = self.mouse-y;
+                                            self.did-drag = false;
+                                        } else if (e.kind == PointerEventKind.move && self.pressed) {
+                                            // lift after a small threshold, then track the slot
+                                            if (root.drag-from == -1 && Math.abs((self.mouse-y - self.press-y) / 1px) > Skin.s(6) / 1px) {
+                                                root.drag-from = i;
+                                                self.did-drag = true;
                                             }
+                                            if (root.drag-from == i) {
+                                                root.drag-to = Math.clamp(
+                                                    i + Math.round((self.mouse-y - Skin.s(46) / 2) / Skin.s(46)),
+                                                    0, root.apps.length - 1);
+                                            }
+                                        } else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) {
+                                            if (root.drag-from == i && root.drag-to >= 0 && root.drag-to != i) {
+                                                root.reorder-app(i, root.drag-to);
+                                            }
+                                            root.drag-from = -1;
+                                            root.drag-to = -1;
                                         }
                                     }
                                 }
@@ -896,9 +911,9 @@ export component Editor {
                                     }
                                     // delete: red, unmistakable
                                     Rectangle {
-                                        width: Skin.s(30);
+                                        width: Skin.s(28);
                                         height: Skin.s(28);
-                                        border-radius: Skin.s(8);
+                                        border-radius: Skin.s(7);
                                         background: del-ta.has-hover ? Skin.red : Skin.red.with-alpha(0.75);
                                         animate background { duration: 120ms; }
                                         Text {
