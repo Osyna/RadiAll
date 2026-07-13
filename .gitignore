@@ -1,6 +1,9 @@
 # rust build output
 /target/
 
+# cross-built binaries (ship via releases, not git history)
+/dist/
+
 # runtime state written by the launcher (per-user, not shipped)
 apps.json
 launcher-settings.json
