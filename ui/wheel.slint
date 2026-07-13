@@ -116,12 +116,16 @@ export component Wheel {
     private property <angle> ggo: Math.min((root.hgap + root.irad) / root.gro * 57.29578deg, root.wspan / 2 - 0.05deg);
     private property <angle> ggi: Math.min((root.hgap + root.irad) / root.gri * 57.29578deg, root.wspan / 2 - 0.05deg);
 
-    // the rim is centered ON the band edges (half its width to each side), so
-    // its inner half always covers the band's outermost fill pixels — no
-    // band colour bleeds past the border ("border before the real border").
+    // the rim is a FILLED annulus sharing the band's exact outer/inner radii,
+    // so it rasterizes with the identical fill AA as the band — the navy fill
+    // replaces exactly the band's outermost `rimw` pixels, no sliver bleeds
+    // past ("border before the real border"). A stroke can't do this: a
+    // centered stroke leaves the fill's ~2px AA fringe uncovered.
     private property <float> rimw: Skin.rim-width * root.pop;
-    private property <float> rro: root.for-;
-    private property <float> rri: root.fir;
+    private property <float> rro: root.for-;              // outer border ring: outer edge
+    private property <float> rro2: root.for- - root.rimw; // outer border ring: inner edge
+    private property <float> rri: root.fir + root.rimw;   // inner border ring: outer edge
+    private property <float> rri2: root.fir;              // inner border ring: inner edge
 
     private property <bool> pill-on: Skin.show-labels
         && root.center-label != "" && !root.show-settings-btn;
@@ -278,22 +282,33 @@ export component Wheel {
         Close { }
     }
 
-    // ---- 3. rim (drawn on top of the sector so the outline is seamless) ----
-    if !root.is-bar: Path {
+    // ---- 3. rim: two filled navy annuli (outer + inner band edges), drawn
+    //      on top of the sector for a seamless outline. evenodd over four
+    //      circles ordered by radius: filled where enclosed by an odd count. ----
+    if !root.is-bar && root.rimw > 0.01: Path {
         width: 100%;
         height: 100%;
         viewbox-width: self.width / 1px;
         viewbox-height: self.height / 1px;
-        fill: transparent;
-        stroke: Skin.rim;                      // color + alpha precomputed in Rust
-        stroke-width: root.rimw * 1px;
+        fill: Skin.rim;                        // color + alpha precomputed in Rust
+        fill-rule: evenodd;
+        // outer border ring
         MoveTo { x: root.cxf - root.rro; y: root.cxf; }
         ArcTo { x: root.cxf + root.rro; y: root.cxf; radius-x: root.rro; radius-y: root.rro; sweep: true; }
         ArcTo { x: root.cxf - root.rro; y: root.cxf; radius-x: root.rro; radius-y: root.rro; sweep: true; }
         Close { }
+        MoveTo { x: root.cxf - root.rro2; y: root.cxf; }
+        ArcTo { x: root.cxf + root.rro2; y: root.cxf; radius-x: root.rro2; radius-y: root.rro2; sweep: true; }
+        ArcTo { x: root.cxf - root.rro2; y: root.cxf; radius-x: root.rro2; radius-y: root.rro2; sweep: true; }
+        Close { }
+        // inner border ring
         MoveTo { x: root.cxf - root.rri; y: root.cxf; }
         ArcTo { x: root.cxf + root.rri; y: root.cxf; radius-x: root.rri; radius-y: root.rri; sweep: true; }
         ArcTo { x: root.cxf - root.rri; y: root.cxf; radius-x: root.rri; radius-y: root.rri; sweep: true; }
+        Close { }
+        MoveTo { x: root.cxf - root.rri2; y: root.cxf; }
+        ArcTo { x: root.cxf + root.rri2; y: root.cxf; radius-x: root.rri2; radius-y: root.rri2; sweep: true; }
+        ArcTo { x: root.cxf - root.rri2; y: root.cxf; radius-x: root.rri2; radius-y: root.rri2; sweep: true; }
         Close { }
     }
 
