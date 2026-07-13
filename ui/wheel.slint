@@ -126,6 +126,12 @@ export component Wheel {
     private property <float> rro2: root.for- - root.rimw; // outer border ring: inner edge
     private property <float> rri: root.fir + root.rimw;   // inner border ring: outer edge
     private property <float> rri2: root.fir;              // inner border ring: inner edge
+    // band FILL stops at the rim's inner edges so pink never reaches the
+    // outer/inner boundary — the navy annuli are the sole edges there, so
+    // their AA fringe blends navy->backdrop (no pink to bleed). Full band
+    // when the border is off.
+    private property <float> bfor: root.rimw > 0.01 ? root.for- - root.rimw : root.for-;
+    private property <float> bfir: root.rimw > 0.01 ? root.fir + root.rimw : root.fir;
 
     private property <bool> pill-on: Skin.show-labels
         && root.center-label != "" && !root.show-settings-btn;
@@ -139,13 +145,13 @@ export component Wheel {
         viewbox-height: self.height / 1px;
         fill: Skin.bg.with-alpha(Skin.wheel-opacity);
         fill-rule: evenodd;
-        MoveTo { x: root.cxf - root.for-; y: root.cxf; }
-        ArcTo { x: root.cxf + root.for-; y: root.cxf; radius-x: root.for-; radius-y: root.for-; sweep: true; }
-        ArcTo { x: root.cxf - root.for-; y: root.cxf; radius-x: root.for-; radius-y: root.for-; sweep: true; }
+        MoveTo { x: root.cxf - root.bfor; y: root.cxf; }
+        ArcTo { x: root.cxf + root.bfor; y: root.cxf; radius-x: root.bfor; radius-y: root.bfor; sweep: true; }
+        ArcTo { x: root.cxf - root.bfor; y: root.cxf; radius-x: root.bfor; radius-y: root.bfor; sweep: true; }
         Close { }
-        MoveTo { x: root.cxf - root.fir; y: root.cxf; }
-        ArcTo { x: root.cxf + root.fir; y: root.cxf; radius-x: root.fir; radius-y: root.fir; sweep: true; }
-        ArcTo { x: root.cxf - root.fir; y: root.cxf; radius-x: root.fir; radius-y: root.fir; sweep: true; }
+        MoveTo { x: root.cxf - root.bfir; y: root.cxf; }
+        ArcTo { x: root.cxf + root.bfir; y: root.cxf; radius-x: root.bfir; radius-y: root.bfir; sweep: true; }
+        ArcTo { x: root.cxf - root.bfir; y: root.cxf; radius-x: root.bfir; radius-y: root.bfir; sweep: true; }
         Close { }
     }
 
