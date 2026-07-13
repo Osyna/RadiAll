@@ -1519,6 +1519,7 @@ impl Ui {
                 .into(),
         );
         sw.set_can_send_keys(core.comp.can_send_keys());
+        sw.set_window_backend(core.comp.backend().into());
         drop(core);
         self.refresh_selected_actions();
     }

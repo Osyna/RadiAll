@@ -677,6 +677,7 @@ export component Editor {
     in property <string> keybind-backend: "none"; // "hyprland" | "portal" | "x11" | "none"
     private property <bool> can-manage-keybinds: root.keybind-backend != "none";
     in property <bool> can-send-keys;          // false -> custom key-combo actions warn
+    in property <string> window-backend: "hyprland"; // "hyprland"|"wlr"|"plasma"|"x11"|"none"
 
     // ---- callbacks into Rust ----
     callback select-app(int);
@@ -1858,6 +1859,49 @@ export component Editor {
                         spacing: Skin.s(10);
                         alignment: start;
 
+                        // Shown when no window-listing protocol is available
+                        // (GNOME / KDE Plasma on Wayland block third-party
+                        // window control). Apps ring still works.
+                        if root.window-backend == "none": Rectangle {
+                            border-radius: Skin.s(12);
+                            background: Skin.yellow.with-alpha(0.10);
+                            border-width: 1px;
+                            border-color: Skin.yellow.with-alpha(0.45);
+                            VerticalLayout {
+                                padding: Skin.s(14);
+                                spacing: Skin.s(6);
+                                HorizontalLayout {
+                                    spacing: Skin.s(8);
+                                    Text {
+                                        text: "\u{f071}"; // warning triangle
+                                        font-family: Skin.icon-font;
+                                        font-size: Skin.s(15);
+                                        color: Skin.yellow;
+                                        vertical-alignment: center;
+                                    }
+                                    Text {
+                                        text: "Window switching unavailable in this session";
+                                        color: Skin.fg;
+                                        font-size: Skin.s(13);
+                                        font-weight: 600;
+                                        vertical-alignment: center;
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+                                Text {
+                                    text: "This Wayland compositor doesn't let external apps list or control other windows — GNOME and KDE Plasma on Wayland block this by design. The Apps ring and app launching work normally; the Windows and Actions rings stay empty.";
+                                    color: Skin.fg-dim;
+                                    font-size: Skin.s(11);
+                                    wrap: word-wrap;
+                                }
+                                Text {
+                                    text: "To get all three rings: log in with an X11 session (works on every desktop), or use a wlroots compositor — sway, Hyprland, river, Wayfire, labwc.";
+                                    color: Skin.fg-dim;
+                                    font-size: Skin.s(11);
+                                    wrap: word-wrap;
+                                }
+                            }
+                        }
                         Card {
                             title: "RING SHORTCUTS";
 
