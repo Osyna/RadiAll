@@ -52,8 +52,10 @@ QML-style hex, alpha FIRST: `#rgb`, `#rrggbb`, or `#AArrggbb`
 | `dot` | *auto* | Unselected window dots. Auto like `onBand` |
 | `labelFg` | *auto* | Center label pill text. Auto = `fgStrong` |
 | `labelPillBg` | dark navy | Center label pill fill |
-| `edge` | transparent | Ring outline. Transparent = subtle auto edge; a solid color turns on **cell-shading** (bold cartoon border, see `matrix`) |
-| `edgeWidth` | `3` | Outline width in cell-shading mode |
+| `edge` | transparent | Cell-shading toggle: a solid color turns on the **bold cartoon border + sharp corners** (see `matrix`); transparent = off |
+| `edgeWidth` | `3` | Cell-shading outline width |
+| `rim` | *auto* | Band border color, independent of cell-shading. Auto = the cell `edge`, else a subtle luminance tint. Overridable live in Look → Border |
+| `rimWidth` | *auto* | Band border width in px. Auto = `edgeWidth` (cell) or a 1px hairline. `0` removes the border (and cell-shading). Live under Look → Wheel → Border width |
 | `segBg` | *auto* | Inactive-section fill. Auto = the Look-tab picker (`"bg"` there = same as the band, so only gaps cut through); default invisible |
 | `settingsBtn` | white | The center settings disc (behind the radish) |
 

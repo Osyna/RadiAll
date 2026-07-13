@@ -116,10 +116,12 @@ export component Wheel {
     private property <angle> ggo: Math.min((root.hgap + root.irad) / root.gro * 57.29578deg, root.wspan / 2 - 0.05deg);
     private property <angle> ggi: Math.min((root.hgap + root.irad) / root.gri * 57.29578deg, root.wspan / 2 - 0.05deg);
 
-    // rim circles sit half a line-width inside/outside the band edges
+    // the rim is centered ON the band edges (half its width to each side), so
+    // its inner half always covers the band's outermost fill pixels — no
+    // band colour bleeds past the border ("border before the real border").
     private property <float> rimw: Skin.rim-width * root.pop;
-    private property <float> rro: root.for- - root.rimw / 2;
-    private property <float> rri: root.fir + root.rimw / 2;
+    private property <float> rro: root.for-;
+    private property <float> rri: root.fir;
 
     private property <bool> pill-on: Skin.show-labels
         && root.center-label != "" && !root.show-settings-btn;

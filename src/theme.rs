@@ -170,6 +170,8 @@ skin! {
     arc_btn:      Option<Rgba> = None => "arcBtn",       // idle arc button; auto = fg @ 10%
     arc_btn_hover: Option<Rgba> = None => "arcBtnHover", // auto = accent
     seg_bg:       Option<Rgba> = None => "segBg",        // inactive sections; auto = settings picker or invisible
+    rim:          Option<Rgba> = None => "rim",          // band border; auto = edge (cell themes) or luminance tint
+    rim_width:    Option<f32>  = None => "rimWidth",     // band border width, design px; auto = edgeWidth or 1
     font:         String = "SF Pro Text".into()        => "font",
     font_display: String = "SF Pro Display".into()     => "fontDisplay",
     icon_font:    String = "JetBrainsMono Nerd Font".into() => "iconFont",
@@ -218,6 +220,15 @@ impl FromTheme for Option<Rgba> {
     }
 }
 
+impl FromTheme for Option<f32> {
+    fn apply(slot: &mut Self, v: &Value) {
+        // Absent -> keep inherited; number pins; -1 resets back to auto.
+        if let Some(n) = v.as_f64() {
+            *slot = if n < 0.0 { None } else { Some(n as f32) };
+        }
+    }
+}
+
 trait ToTheme {
     fn put(&self, key: &str, map: &mut serde_json::Map<String, Value>);
 }
@@ -250,6 +261,14 @@ impl ToTheme for Option<Rgba> {
     }
 }
 
+impl ToTheme for Option<f32> {
+    fn put(&self, key: &str, map: &mut serde_json::Map<String, Value>) {
+        if let Some(v) = self {
+            ToTheme::put(v, key, map);
+        }
+    }
+}
+
 /// Themes shipped/installed for the user: ~/.config/radiall/themes/<name>.json
 pub fn themes_dir() -> PathBuf {
     crate::config::config_dir().join("themes")
@@ -275,9 +294,9 @@ pub fn available() -> Vec<String> {
 
 impl Skin {
     /// Load theme `name`, overlaying its keys onto the built-in defaults.
-    /// `settings_bg` / `settings_accent` / `settings_seg_bg` are the live
-    /// Look-tab picker values: they win over the defaults but LOSE to an
-    /// explicit theme key — same precedence as the old Skin.qml.
+    /// `settings_*` are the live Look-tab picker values: they win over the
+    /// defaults but LOSE to an explicit theme key — same precedence as the
+    /// old Skin.qml.
     ///
     /// A theme may set `"extends": "<parent>"`: the parent's keys apply
     /// first (recursively, depth-capped), then the child's overrides.
@@ -286,6 +305,8 @@ impl Skin {
         settings_bg: Option<&str>,
         settings_accent: Option<&str>,
         settings_seg_bg: Option<&str>,
+        settings_border: Option<&str>,
+        settings_border_width: Option<f32>,
     ) -> Self {
         let mut skin = Self::default();
         if let Some(c) = settings_bg.and_then(Rgba::parse) {
@@ -296,6 +317,12 @@ impl Skin {
         }
         if let Some(c) = settings_seg_bg.and_then(Rgba::parse) {
             skin.seg_bg = Some(c);
+        }
+        if let Some(c) = settings_border.and_then(Rgba::parse) {
+            skin.rim = Some(c);
+        }
+        if let Some(w) = settings_border_width {
+            skin.rim_width = Some(w);
         }
         skin.apply_file(name, 0);
         skin
@@ -371,7 +398,7 @@ mod tests {
     #[test]
     fn theme_overlay_beats_settings_beats_default() {
         // no theme file, settings accent wins over default
-        let s = Skin::load("__nonexistent__", None, Some("#ff0000"), None);
+        let s = Skin::load("__nonexistent__", None, Some("#ff0000"), None, None, None);
         assert_eq!(s.accent, Rgba::rgb(255, 0, 0));
         // untouched keys keep defaults
         assert_eq!(s.scale, 1.1);
@@ -383,6 +410,19 @@ mod tests {
         assert_eq!(Rgba::rgba(20, 20, 24, 247).to_hex(), "#f7141418");
         let c = Rgba::parse("#f7141418").unwrap();
         assert_eq!(Rgba::parse(&c.to_hex()), Some(c));
+    }
+
+    #[test]
+    fn border_settings_override_theme_rim() {
+        // Look-tab border width/color win over the built-in defaults, and the
+        // width sentinel (<0) means "keep auto".
+        let pinned = Skin::load("__nonexistent__", None, None, None, Some("#ff0000"), Some(4.0));
+        assert_eq!(pinned.rim, Some(Rgba::rgb(255, 0, 0)));
+        assert_eq!(pinned.rim_width, Some(4.0));
+        // auto (no settings override) leaves both None -> adaptive resolves them
+        let auto = Skin::load("__nonexistent__", None, None, None, None, None);
+        assert_eq!(auto.rim, None);
+        assert_eq!(auto.rim_width, None);
     }
 
     #[test]

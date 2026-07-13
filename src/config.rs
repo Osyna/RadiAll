@@ -67,6 +67,10 @@ pub struct Settings {
     pub seg_gap: f32,
     /// Inactive-section fill; "" = invisible (band shows through).
     pub seg_bg: String,
+    /// Band border (rim) color; "" = auto (theme edge / luminance tint).
+    pub border: String,
+    /// Band border width, design px; -1 = auto (theme edgeWidth or 1).
+    pub border_width: f32,
     /// Center hole minimum radius, design px (the hole grows with ring size).
     pub hole_size: f32,
     pub show_labels: bool,
@@ -109,6 +113,8 @@ impl Default for Settings {
             section_inset: 3.0,
             seg_gap: 0.0,
             seg_bg: String::new(),
+            border: String::new(),
+            border_width: -1.0,
             hole_size: 64.0,
             show_labels: true,
             show_dots: true,

@@ -341,6 +341,8 @@ struct Adaptive {
     dot: Rgba,
     rim: Rgba,
     rim_width: f32,
+    /// Border width in DESIGN px (slint re-scales); <=0 = border off.
+    rim_width_design: f32,
     sector: Rgba,
     label_fg: Rgba,
     arc_btn: Rgba,
@@ -354,6 +356,7 @@ impl Default for Adaptive {
             dot: Rgba::rgba(0, 0, 0, 140),
             rim: Rgba::rgba(0, 0, 0, 26),
             rim_width: 1.0,
+            rim_width_design: -1.0,
             sector: Rgba::rgb(0xe8, 0x55, 0x5f),
             label_fg: Rgba::rgba(255, 255, 255, 242),
             arc_btn: Rgba::rgba(255, 255, 255, 26),
@@ -460,19 +463,49 @@ impl Ui {
             } else {
                 Some(&s.seg_bg)
             },
+            if s.border.is_empty() {
+                None
+            } else {
+                Some(&s.border)
+            },
+            if s.border_width < 0.0 {
+                None
+            } else {
+                Some(s.border_width)
+            },
         );
         let light = band_lum(skin.bg) > 0.5;
+        // Border (rim) resolution: explicit rim/rimWidth (Look tab or theme)
+        // > cell-shading edge > auto luminance tint. Width 0 kills the
+        // border AND cell mode (rounded wedge comes back).
         let cell_edge = skin.edge.a > 0;
-        let (rim, rim_w) = if cell_edge {
-            (skin.edge, skin.s(skin.edge_width))
-        } else {
-            let a = if light { 0.10 } else { 0.14 };
-            let base = if light {
-                Rgba::rgb(0, 0, 0)
+        let rim_w_design = skin
+            .rim_width
+            .unwrap_or(if cell_edge { skin.edge_width } else { -1.0 });
+        let (rim, rim_w) = {
+            let auto_rim = if cell_edge {
+                skin.edge
             } else {
-                Rgba::rgb(255, 255, 255)
+                let a = if light { 0.10 } else { 0.14 };
+                let base = if light {
+                    Rgba::rgb(0, 0, 0)
+                } else {
+                    Rgba::rgb(255, 255, 255)
+                };
+                base.with_alpha((a * s.wheel_opacity * 255.0) as u8)
             };
-            (base.with_alpha((a * s.wheel_opacity * 255.0) as u8), 1.0)
+            let rim = skin.rim.unwrap_or(auto_rim);
+            // -1 sentinel: the non-cell auto border is a real 1px hairline
+            let w = if rim_w_design < 0.0 {
+                1.0
+            } else {
+                skin.s(rim_w_design)
+            };
+            if w <= 0.0 {
+                (Rgba::rgba(0, 0, 0, 0), 0.0)
+            } else {
+                (rim, w)
+            }
         };
         let adaptive = Adaptive {
             on_band: skin.on_band.unwrap_or(if light {
@@ -487,6 +520,7 @@ impl Ui {
             }),
             rim,
             rim_width: rim_w,
+            rim_width_design: if rim_w <= 0.0 { 0.0 } else { rim_w_design },
             sector: skin.sector.unwrap_or_else(|| mix_toward_white(skin.accent)),
             label_fg: skin.label_fg.unwrap_or(skin.fg_strong),
             arc_btn: skin.arc_btn.unwrap_or(skin.fg.with_alpha(26)),
@@ -524,8 +558,13 @@ impl Ui {
         g.set_red(to_color(skin.red));
         g.set_green(to_color(skin.green));
         g.set_sep(to_color(skin.sep));
-        g.set_edge(to_color(skin.edge));
-        g.set_edge_width(skin.edge_width);
+        // cell-shading flag + wedge inset follow the EFFECTIVE border: a
+        // Look-tab border override recolors/resizes the cell outline too,
+        // and width 0 switches cell mode off entirely.
+        let a = self.adaptive.borrow();
+        let cell = skin.edge.a > 0 && a.rim_width > 0.0;
+        g.set_edge(to_color(if cell { a.rim } else { Rgba::rgba(0, 0, 0, 0) }));
+        g.set_edge_width(a.rim_width_design.max(0.0));
         g.set_panel_bg(to_color(skin.panel_bg));
         g.set_label_pill_bg(to_color(skin.label_pill_bg));
         g.set_font(skin.font.clone().into());
@@ -1457,6 +1496,14 @@ impl Ui {
         sw.set_section_inset(s.section_inset);
         sw.set_seg_gap(s.seg_gap);
         sw.set_seg_bg_hex(s.seg_bg.clone().into());
+        sw.set_border_hex(s.border.clone().into());
+        // slider shows the effective design width when the setting is auto (-1)
+        sw.set_border_width(if s.border_width >= 0.0 {
+            s.border_width
+        } else {
+            let d = self.adaptive.borrow().rim_width_design;
+            if d > 0.0 { d } else { 1.0 }
+        });
         sw.set_hole_size(s.hole_size);
         sw.set_show_dots(s.show_dots);
         sw.set_menu_layout_name(s.layout.clone().into());
@@ -1873,6 +1920,8 @@ impl Ui {
                     "sectionInset" => s.section_inset = v.parse().unwrap_or(s.section_inset),
                     "segGap" => s.seg_gap = v.parse().unwrap_or(s.seg_gap),
                     "segBg" => s.seg_bg = v,
+                    "border" => s.border = v,
+                    "borderWidth" => s.border_width = v.parse().unwrap_or(s.border_width),
                     "holeSize" => s.hole_size = v.parse().unwrap_or(s.hole_size),
                     "showLabels" => s.show_labels = v == "true",
                     "showDots" => s.show_dots = v == "true",
