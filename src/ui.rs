@@ -540,7 +540,6 @@ impl Ui {
     /// Push the stored skin + adaptive values into one window's Skin global.
     fn push_skin(&self, g: &Skin<'_>) {
         let skin = self.skin.borrow();
-        let a = *self.adaptive.borrow();
         let core = self.core.borrow();
         g.set_scale(skin.scale);
         g.set_bg(to_color(skin.bg));
