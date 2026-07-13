@@ -109,6 +109,7 @@ pub fn write_binds_file(settings: &Settings) {
     }
 }
 
+#[cfg_attr(windows, allow(dead_code))] // Hyprland-only; unused on Windows
 pub fn clear_binds_file() {
     std::fs::create_dir_all(hypr_dir()).ok();
     std::fs::write(
@@ -164,6 +165,7 @@ fn bind_live(mode: &str, combo: &Combo) {
 /// Full reconcile, port of applyShortcuts(): no-op off Hyprland;
 /// disabled -> unbind everything + stub file; enabled -> file per persistBinds
 /// + live binds either way.
+#[cfg_attr(windows, allow(dead_code))] // Hyprland-only; unused on Windows
 pub fn apply_shortcuts(settings: &Settings, can_manage: bool) {
     if !can_manage {
         return;
@@ -227,6 +229,8 @@ pub enum ProviderKind {
     Portal,
     /// Plain X11 XGrabKey on the root window.
     X11,
+    /// Windows: RegisterHotKey global hotkeys (in-process message loop).
+    Win,
     /// No provider; the user binds `radiall --<mode>` in their WM config.
     None,
 }
@@ -237,6 +241,7 @@ fn provider_override(raw: &str) -> Option<ProviderKind> {
         "hyprctl" | "hyprland" => Some(ProviderKind::Hyprctl),
         "portal" => Some(ProviderKind::Portal),
         "x11" => Some(ProviderKind::X11),
+        "win" | "windows" => Some(ProviderKind::Win),
         "none" | "off" => Some(ProviderKind::None),
         _ => None,
     }
@@ -259,28 +264,40 @@ pub fn detect_provider() -> ProviderKind {
             ),
         }
     }
-    let set = |k: &str| std::env::var(k).is_ok_and(|v| !v.is_empty());
-    if set("HYPRLAND_INSTANCE_SIGNATURE") {
-        ProviderKind::Hyprctl
-    } else if set("WAYLAND_DISPLAY") {
-        if crate::shortcuts_portal::available() {
-            ProviderKind::Portal
+    #[cfg(windows)]
+    {
+        ProviderKind::Win
+    }
+    #[cfg(unix)]
+    {
+        let set = |k: &str| std::env::var(k).is_ok_and(|v| !v.is_empty());
+        if set("HYPRLAND_INSTANCE_SIGNATURE") {
+            ProviderKind::Hyprctl
+        } else if set("WAYLAND_DISPLAY") {
+            if crate::shortcuts_portal::available() {
+                ProviderKind::Portal
+            } else {
+                ProviderKind::None
+            }
+        } else if set("DISPLAY") {
+            ProviderKind::X11
         } else {
             ProviderKind::None
         }
-    } else if set("DISPLAY") {
-        ProviderKind::X11
-    } else {
-        ProviderKind::None
     }
 }
 
 /// The running provider. Hyprctl keeps no state (binds live in the
 /// compositor); portal/X11 hold a handle to their background thread.
 enum Provider {
+    #[cfg(unix)]
     Hyprctl,
+    #[cfg(unix)]
     Portal(crate::shortcuts_portal::PortalProvider),
+    #[cfg(unix)]
     X11(crate::shortcuts_x11::X11Provider),
+    #[cfg(windows)]
+    Win(crate::shortcuts_win::WinProvider),
     Inert,
 }
 
@@ -302,6 +319,7 @@ impl Shortcuts {
         fire: impl Fn(&'static str) + Send + Sync + 'static,
     ) -> Shortcuts {
         let fire: FireFn = Arc::new(fire);
+        #[cfg(unix)]
         let (kind, provider) = match kind {
             ProviderKind::Hyprctl => {
                 apply_shortcuts(settings, true);
@@ -315,7 +333,17 @@ impl Shortcuts {
                 Some(p) => (ProviderKind::X11, Provider::X11(p)),
                 None => (ProviderKind::None, Provider::Inert),
             },
-            ProviderKind::None => (ProviderKind::None, Provider::Inert),
+            // The Windows kind can't be selected on Unix; degrade cleanly.
+            ProviderKind::Win | ProviderKind::None => (ProviderKind::None, Provider::Inert),
+        };
+        #[cfg(windows)]
+        let (kind, provider) = match kind {
+            ProviderKind::Win => match crate::shortcuts_win::WinProvider::start(settings, fire) {
+                Some(p) => (ProviderKind::Win, Provider::Win(p)),
+                None => (ProviderKind::None, Provider::Inert),
+            },
+            // Unix-only kinds can't be selected on Windows; degrade cleanly.
+            _ => (ProviderKind::None, Provider::Inert),
         };
         let s = Shortcuts { kind, provider };
         log::info!("shortcuts: provider {}", s.backend_name());
@@ -326,9 +354,14 @@ impl Shortcuts {
     /// toggle flipped).
     pub fn apply(&self, settings: &Settings) {
         match &self.provider {
+            #[cfg(unix)]
             Provider::Hyprctl => apply_shortcuts(settings, true),
+            #[cfg(unix)]
             Provider::Portal(p) => p.apply(settings),
+            #[cfg(unix)]
             Provider::X11(p) => p.apply(settings),
+            #[cfg(windows)]
+            Provider::Win(p) => p.apply(settings),
             Provider::Inert => {}
         }
     }
@@ -342,6 +375,7 @@ impl Shortcuts {
             ProviderKind::Hyprctl => "hyprland",
             ProviderKind::Portal => "portal",
             ProviderKind::X11 => "x11",
+            ProviderKind::Win => "win",
             ProviderKind::None => "none",
         }
     }

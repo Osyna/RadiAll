@@ -111,6 +111,7 @@ per session:
 | KDE Plasma Wayland (`plasma-window-management`) | ✓ | ✓ | — | — |
 | Any X11 WM (EWMH) — KDE-X11, XFCE, Cinnamon, MATE, i3, GNOME-X11… | ✓ | ✓ | — | — |
 | GNOME Wayland | — | — | — | — |
+| **Windows** (Win32 — `EnumWindows`) | ✓ | ✓ (fullscreen = maximise) | — | — |
 
 Global shortcuts pick a provider the same way: **hyprctl** binds on Hyprland,
 the **XDG global-shortcuts portal** on GNOME / KDE Wayland (your desktop may
@@ -121,6 +122,30 @@ Where the compositor offers nothing (GNOME Wayland has no window-listing
 protocol), the apps ring still works fully — the windows/actions rings degrade
 gracefully. On Hyprland the overlay is a floating pinned window sized by
 window rules; elsewhere it falls back to a fullscreen surface.
+
+### Windows
+
+RadiAll targets Windows 10/11 too — the same binary and UI, with Win32 adapters
+behind the same traits:
+
+- **Apps ring** — scanned from your Start Menu shortcuts (per-user and
+  all-users `Programs`). Each `.lnk` is launched through the shell, and its icon
+  is extracted once and cached under `%APPDATA%\radiall\iconcache\`.
+- **Windows / actions rings** — `EnumWindows` lists alt-tab windows (the ring
+  filters out its own overlay and cloaked UWP ghosts); activate, close, and
+  "fullscreen" (maximise) go through ordinary window messages. A window's app is
+  matched to a shortcut by the executable name, so open-window dots and per-app
+  actions work as on Linux.
+- **Global hotkeys** — the daemon registers them itself with `RegisterHotKey`.
+  Defaults are `Ctrl+Alt+A/W/D`, because the Windows shell reserves `Win+A/W/D`;
+  any combo Windows keeps for itself simply warns and is skipped.
+- **IPC** — a named pipe (`\\.\pipe\radiall.<user>`) rather than a unix socket,
+  so `radiall.exe --apps` from any process still drives the running daemon.
+- **State** lives in `%APPDATA%\radiall\` (`settings.json`, `apps.json`,
+  `themes\*.json`); the tray uses the native notification area.
+
+Build with a normal `cargo build --release` on Windows (MSVC), or cross-compile
+from Linux with the `x86_64-pc-windows-gnu` target and `mingw-w64`.
 
 ### Resource footprint
 

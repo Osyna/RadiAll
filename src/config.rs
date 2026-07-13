@@ -37,10 +37,23 @@ pub struct Shortcuts {
 
 impl Default for Shortcuts {
     fn default() -> Self {
-        Self {
-            apps: "super+a".into(),
-            windows: "super+w".into(),
-            actions: "super+d".into(),
+        #[cfg(windows)]
+        {
+            // Win+A/W/D are reserved by the Windows shell, so RegisterHotKey
+            // rejects them; default to combos it will actually accept.
+            Self {
+                apps: "ctrl+alt+a".into(),
+                windows: "ctrl+alt+w".into(),
+                actions: "ctrl+alt+d".into(),
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            Self {
+                apps: "super+a".into(),
+                windows: "super+w".into(),
+                actions: "super+d".into(),
+            }
         }
     }
 }

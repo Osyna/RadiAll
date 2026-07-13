@@ -17,10 +17,16 @@
 //!   - global keybinds live in shortcuts.rs providers (hyprctl / XDG portal /
 //!     X11 grabs); users can always bind `radiall --apps` manually instead
 
+#[cfg(unix)]
 mod hyprland;
+#[cfg(unix)]
 mod plasma;
+#[cfg(unix)]
 mod wlr;
+#[cfg(unix)]
 mod x11;
+#[cfg(windows)]
+mod windows;
 
 use std::sync::mpsc::Sender;
 
@@ -46,6 +52,8 @@ pub enum CompositorEvent {
     Active(Option<WindowInfo>),
     /// The compositor reloaded its config (Hyprland): keyword-applied binds
     /// and window rules were wiped and have been / must be re-applied.
+    /// (constructed only by the Hyprland adapter)
+    #[cfg_attr(windows, allow(dead_code))]
     ConfigReloaded,
 }
 
@@ -117,33 +125,44 @@ impl Compositor for NullCompositor {
 
 /// Pick the best adapter for the current session.
 ///
+/// Windows: the Win32 adapter (EnumWindows + SetForegroundWindow/PostMessage).
 /// Wayland: hyprland (env-detected) -> wlr-foreign-toplevel -> plasma.
 /// No Wayland but X11: EWMH. An XWayland DISPLAY under a Wayland session is
 /// deliberately NOT used as a fallback — it would list only XWayland windows
 /// and silently miss every native client, which is worse than degrading.
 pub fn detect() -> Box<dyn Compositor> {
-    let wayland = std::env::var_os("WAYLAND_DISPLAY").is_some();
-    let x11 = std::env::var_os("DISPLAY").is_some();
-
-    if std::env::var("HYPRLAND_INSTANCE_SIGNATURE").is_ok() {
-        match hyprland::HyprlandCompositor::connect() {
+    #[cfg(windows)]
+    {
+        match windows::WindowsCompositor::connect() {
             Ok(c) => return Box::new(c),
-            Err(e) => log::warn!("hyprland adapter failed ({e}), trying wlr"),
+            Err(e) => log::warn!("win32 window adapter failed ({e})"),
         }
     }
-    if wayland {
-        match wlr::WlrCompositor::connect() {
-            Ok(c) => return Box::new(c),
-            Err(e) => log::debug!("wlr-foreign-toplevel unavailable ({e}), trying plasma"),
+    #[cfg(unix)]
+    {
+        let wayland = std::env::var_os("WAYLAND_DISPLAY").is_some();
+        let x11 = std::env::var_os("DISPLAY").is_some();
+
+        if std::env::var("HYPRLAND_INSTANCE_SIGNATURE").is_ok() {
+            match hyprland::HyprlandCompositor::connect() {
+                Ok(c) => return Box::new(c),
+                Err(e) => log::warn!("hyprland adapter failed ({e}), trying wlr"),
+            }
         }
-        match plasma::PlasmaCompositor::connect() {
-            Ok(c) => return Box::new(c),
-            Err(e) => log::debug!("plasma window-management unavailable ({e})"),
-        }
-    } else if x11 {
-        match x11::X11Compositor::connect() {
-            Ok(c) => return Box::new(c),
-            Err(e) => log::warn!("x11 adapter failed ({e})"),
+        if wayland {
+            match wlr::WlrCompositor::connect() {
+                Ok(c) => return Box::new(c),
+                Err(e) => log::debug!("wlr-foreign-toplevel unavailable ({e}), trying plasma"),
+            }
+            match plasma::PlasmaCompositor::connect() {
+                Ok(c) => return Box::new(c),
+                Err(e) => log::debug!("plasma window-management unavailable ({e})"),
+            }
+        } else if x11 {
+            match x11::X11Compositor::connect() {
+                Ok(c) => return Box::new(c),
+                Err(e) => log::warn!("x11 adapter failed ({e})"),
+            }
         }
     }
     log::warn!("no window-listing protocol available; windows/actions rings degrade");

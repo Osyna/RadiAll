@@ -4,10 +4,13 @@
 //! (spec-launcher.md §2, §4, §5): installed-apps picker source, `findEntry`,
 //! `iconForClass`, `iconSource`, and `Quickshell.execDetached`.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+#[cfg(unix)]
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
+#[cfg(unix)]
 use freedesktop_desktop_entry as fde;
 use parking_lot::Mutex;
 use slint::{Rgba8Pixel, SharedPixelBuffer};
@@ -43,6 +46,7 @@ pub struct AppIndex {
 impl AppIndex {
     /// Scan all XDG data dirs for desktop entries (precedence order), skipping
     /// NoDisplay/Hidden entries, deduping by desktop id (first wins).
+    #[cfg(unix)]
     pub fn scan() -> Self {
         let locales = fde::get_languages_from_env();
         let mut seen: HashSet<String> = HashSet::new();
@@ -121,6 +125,14 @@ impl AppIndex {
         Self { installed }
     }
 
+    /// Windows: enumerate Start-Menu shortcuts (see `apps_windows`).
+    #[cfg(windows)]
+    pub fn scan() -> Self {
+        Self {
+            installed: crate::apps_windows::scan(),
+        }
+    }
+
     /// Visible apps sorted case-insensitively by name (picker source).
     pub fn installed(&self) -> &[DesktopApp] {
         &self.installed
@@ -195,9 +207,9 @@ impl AppIndex {
     }
 }
 
-/// Basename of a path-ish string ("" stays "").
+/// Basename of a path-ish string, honoring both separators ("" stays "").
 fn basename(s: &str) -> &str {
-    s.rsplit('/').next().unwrap_or(s)
+    s.rsplit(['/', '\\']).next().unwrap_or(s)
 }
 
 /// Tokenize a Desktop Entry Exec= line per the freedesktop spec:
@@ -206,6 +218,7 @@ fn basename(s: &str) -> &str {
 ///    (\" \\ \$ \`) inside quoted sections,
 /// 3. field codes %f %F %u %U %d %D %n %N %i %c %k %v %m dropped entirely
 ///    (standalone tokens removed, embedded occurrences stripped); %% -> "%".
+#[cfg(unix)]
 fn tokenize_exec(exec: &str) -> Vec<String> {
     // Stage 1: general string-value unescape.
     let mut unescaped = String::with_capacity(exec.len());
@@ -307,11 +320,14 @@ fn tokenize_exec(exec: &str) -> Vec<String> {
 
 /// GTK default theme, resolved once (freedesktop-icons falls back to hicolor
 /// and /usr/share/pixmaps internally).
+#[cfg(unix)]
 static GTK_THEME: LazyLock<Option<String>> = LazyLock::new(freedesktop_icons::default_theme_gtk);
 
 /// Sizes preference for theme lookups.
+#[cfg(unix)]
 const ICON_SIZES: [u16; 5] = [64, 128, 48, 256, 32];
 
+#[cfg(unix)]
 fn theme_lookup(name: &str) -> Option<PathBuf> {
     if name.is_empty() {
         return None;
@@ -352,22 +368,32 @@ fn theme_lookup(name: &str) -> Option<PathBuf> {
     None
 }
 
-/// iconSource port: abs path passthrough (must exist), else icon-theme lookup,
-/// else the application-x-executable fallback; None = caller draws a monogram.
+/// iconSource port: absolute-path passthrough (must exist), else — on Linux —
+/// an icon-theme lookup then the generic fallback. None = caller draws a
+/// monogram. On Windows apps carry absolute extracted-PNG paths, so a bare
+/// name resolves to nothing (monogram).
 pub fn icon_path(icon: &str) -> Option<PathBuf> {
     if icon.is_empty() {
         return None;
     }
-    if icon.starts_with('/') {
-        let p = Path::new(icon);
-        if p.exists() {
-            return Some(p.to_path_buf());
-        }
-        // Dead absolute path: fall through to the generic fallback.
-    } else if let Some(p) = theme_lookup(icon) {
-        return Some(p);
+    let p = Path::new(icon);
+    if p.is_absolute() && p.exists() {
+        return Some(p.to_path_buf());
     }
-    theme_lookup("application-x-executable")
+    // A bare relative name — or a dead absolute path — falls through below.
+    #[cfg(unix)]
+    {
+        if !p.is_absolute() {
+            if let Some(hit) = theme_lookup(icon) {
+                return Some(hit);
+            }
+        }
+        theme_lookup("application-x-executable")
+    }
+    #[cfg(windows)]
+    {
+        None
+    }
 }
 
 /// Icon pixel cache: scans repeat and decoding (especially SVG) is costly.
@@ -484,6 +510,7 @@ pub fn load_icon_pixels_from_bytes(bytes: &[u8], px: u32) -> Option<SharedPixelB
 /// Detached spawn of an argv vector: no shell, survives daemon exit.
 /// Port of `Quickshell.execDetached` (spec §4): stdio to null, own process
 /// group so the child outlives us and never receives our signals.
+#[cfg(unix)]
 pub fn launch(argv: &[String]) {
     let Some((program, args)) = argv.split_first() else {
         log::warn!("launch: empty argv");
@@ -506,6 +533,13 @@ pub fn launch(argv: &[String]) {
         Ok(child) => log::info!("launched {program} (pid {})", child.id()),
         Err(e) => log::error!("launch {program} failed: {e}"),
     }
+}
+
+/// Windows launch: hand the program to the shell (ShellExecuteW), so .lnk
+/// shortcuts, .exe, documents and URLs all open. See `apps_windows`.
+#[cfg(windows)]
+pub fn launch(argv: &[String]) {
+    crate::apps_windows::launch(argv);
 }
 
 #[cfg(test)]
@@ -534,6 +568,7 @@ mod tests {
 
     // ---- tokenize_exec -------------------------------------------------
 
+    #[cfg(unix)]
     #[test]
     fn tokenize_plain() {
         assert_eq!(tokenize_exec("firefox --new-window"), vec!["firefox", "--new-window"]);
@@ -541,6 +576,7 @@ mod tests {
         assert!(tokenize_exec("").is_empty());
     }
 
+    #[cfg(unix)]
     #[test]
     fn tokenize_quotes() {
         assert_eq!(
@@ -553,6 +589,7 @@ mod tests {
         assert_eq!(tokenize_exec(r#"cmd """#), vec!["cmd", ""]);
     }
 
+    #[cfg(unix)]
     #[test]
     fn tokenize_two_stage_escapes() {
         // File value: sh -c "echo \\"hi\\""  → stage 1 turns \\ into \,

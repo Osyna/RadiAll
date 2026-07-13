@@ -5,14 +5,20 @@
 //! bind keys to it.
 
 mod apps;
+#[cfg(windows)]
+mod apps_windows;
 mod compositor;
 mod config;
 mod icons;
 mod ipc;
 mod ring;
 mod shortcuts;
+#[cfg(unix)]
 mod shortcuts_portal;
+#[cfg(unix)]
 mod shortcuts_x11;
+#[cfg(windows)]
+mod shortcuts_win;
 mod theme;
 mod ui;
 
@@ -179,7 +185,8 @@ fn run_daemon() -> Result<(), Box<dyn std::error::Error>> {
 
     slint::run_event_loop_until_quit()?;
 
-    // drop the socket file on clean exit
+    // drop the socket file on clean exit (Unix only; the pipe vanishes with us)
+    #[cfg(unix)]
     std::fs::remove_file(ipc::socket_path()).ok();
     Ok(())
 }
@@ -190,14 +197,24 @@ fn start_detached() {
         return;
     }
     let exe = std::env::current_exe().expect("current_exe");
-    use std::os::unix::process::CommandExt;
-    let spawned = std::process::Command::new(exe)
-        .arg("--daemon")
+    let mut cmd = std::process::Command::new(exe);
+    cmd.arg("--daemon")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .process_group(0)
-        .spawn();
+        .stderr(std::process::Stdio::null());
+    #[cfg(unix)]
+    {
+        // Own process group: the daemon outlives this CLI and ignores its signals.
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
+    #[cfg(windows)]
+    {
+        // DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP: no inherited console, own group.
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0000_0008 | 0x0000_0200);
+    }
+    let spawned = cmd.spawn();
     match spawned {
         Ok(_) => println!("radiall: started"),
         Err(e) => {

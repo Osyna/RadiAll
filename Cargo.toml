@@ -7,11 +7,10 @@ description = "RadiAll — a radial app launcher, window switcher, and per-windo
 repository = "https://github.com/Osyna/RadiAll"
 
 [dependencies]
+# Cross-platform core: UI toolkit, config, rendering, logging.
 slint = { version = "1.17", default-features = false, features = [
     "std",
     "compat-1-2",
-    "backend-winit-wayland",
-    "backend-winit-x11",
     "renderer-femtovg",
     "renderer-software",
     "system-tray",
@@ -19,19 +18,49 @@ slint = { version = "1.17", default-features = false, features = [
 ] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-freedesktop-desktop-entry = "0.7"
-freedesktop-icons = "0.4"
 resvg = "0.45"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 parking_lot = "0.12"
+dirs = "6"
+log = "0.4"
+env_logger = { version = "0.11", default-features = false, features = ["auto-color"] }
+
+# Linux/Unix: Wayland + X11 winit backends, freedesktop integration, and the
+# Wayland/X11/DBus clients the compositor + shortcut adapters are built on.
+[target.'cfg(unix)'.dependencies]
+slint = { version = "1.17", default-features = false, features = [
+    "backend-winit-wayland",
+    "backend-winit-x11",
+] }
+freedesktop-desktop-entry = "0.7"
+freedesktop-icons = "0.4"
 wayland-client = "0.31"
 wayland-protocols-wlr = { version = "0.3", features = ["client"] }
 wayland-protocols-plasma = { version = "0.3", features = ["client"] }
 x11rb = "0.13"
 zbus = { version = "5", default-features = false, features = ["blocking-api", "async-io"] }
-dirs = "6"
-log = "0.4"
-env_logger = { version = "0.11", default-features = false, features = ["auto-color"] }
+
+# Windows: winit/Win32 backend + raw Win32 for window listing/control, global
+# hotkeys, Start-Menu app scanning, and icon extraction.
+[target.'cfg(windows)'.dependencies]
+slint = { version = "1.17", default-features = false, features = ["backend-winit"] }
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_UI_Shell_Common",
+    "Win32_Graphics_Gdi",
+    "Win32_System_Com",
+    "Win32_System_Threading",
+    "Win32_System_ProcessStatus",
+    "Win32_System_Pipes",
+    "Win32_Storage_FileSystem",
+    "Win32_Graphics_Dwm",
+    "Win32_System_IO",
+    "Win32_Security",
+] }
+lnk = "0.6"
 
 [build-dependencies]
 slint-build = "1.17"
