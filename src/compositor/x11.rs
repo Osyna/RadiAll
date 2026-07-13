@@ -39,6 +39,7 @@ x11rb::atom_manager! {
         _NET_WM_STATE_SKIP_TASKBAR,
         _NET_WM_STATE_FULLSCREEN,
         _NET_CLOSE_WINDOW,
+        _NET_WM_PID,
         UTF8_STRING,
     }
 }
@@ -250,6 +251,16 @@ fn get_atoms_prop(conn: &RustConnection, win: Window, atom: Atom) -> Vec<Atom> {
         .unwrap_or_default()
 }
 
+/// First value of a CARDINAL property (None = unset), e.g. _NET_WM_PID.
+fn get_cardinal_prop(conn: &RustConnection, win: Window, atom: Atom) -> Option<u32> {
+    conn.get_property(false, win, atom, AtomEnum::CARDINAL, 0, 1)
+        .ok()?
+        .reply()
+        .ok()?
+        .value32()?
+        .next()
+}
+
 /// A text property as lossy UTF-8 (None = unset/empty).
 fn get_text_prop(conn: &RustConnection, win: Window, atom: Atom, type_: Atom) -> Option<String> {
     let reply = conn
@@ -285,6 +296,12 @@ fn window_info(conn: &RustConnection, atoms: &Atoms, win: Window, active: Window
         return None;
     }
     if get_atoms_prop(conn, win, atoms._NET_WM_STATE).contains(&atoms._NET_WM_STATE_SKIP_TASKBAR) {
+        return None;
+    }
+    // Skip our OWN overlay: _NET_WM_PID == this process. On X11 the ring
+    // window is a normal top-level in _NET_CLIENT_LIST, so without this it
+    // shows up as an entry in its own windows ring.
+    if get_cardinal_prop(conn, win, atoms._NET_WM_PID) == Some(std::process::id()) {
         return None;
     }
 
