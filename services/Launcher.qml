@@ -18,13 +18,14 @@ Singleton {
     // its own opening shortcut (see settings.shortcuts + shell.qml).
     property string mode: "apps"
 
-    function open(m)       { mode = m || "apps"; actionApp = null; editing = false; openMonitor = Compositor.activeMonitor; visible = true }
-    function close()       { visible = false; editing = false; actionApp = null }
+    function open(m)       { mode = m || "apps"; actionApp = null; actionSlice = -1; editing = false; openMonitor = Compositor.activeMonitor; visible = true }
+    function close()       { visible = false; editing = false; actionApp = null; actionSlice = -1 }
     function toggleMode(m) { (visible && mode === (m || "apps")) ? close() : open(m) }
     function openSettings() { open("apps"); editing = true }   // tray "Settings…" entry
 
     // ---- per-app action menu (long-press) ----
     property var actionApp: null   // app whose action arc is showing, or null
+    property int actionSlice: -1   // ring index the arc was opened from (for bar/half placement)
     readonly property string gPlus:  ""   // desktop action
     readonly property string gClose: ""
     readonly property string gFloat: ""

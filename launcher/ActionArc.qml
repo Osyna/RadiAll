@@ -3,10 +3,11 @@ import QtQuick
 import QtQuick.Effects
 import "../services"
 
-// Per-app action menu: a half-circle of buttons above the main wheel, shown when
-// an icon is long-pressed (Launcher.actionApp set). Actions come from the app's
-// .desktop Actions plus Hyprland window actions (Close/Float/Fullscreen) — see
-// Launcher.actionsFor(). Centre it on the same point as the main wheel.
+// Per-app action menu: a half-circle of buttons, shown when an icon is
+// long-pressed (Launcher.actionApp set). Actions come from the app's .desktop
+// Actions plus Hyprland window actions (Close/Float/Fullscreen) — see
+// Launcher.actionsFor(). RadialMenu places it over the pressed item (bar/half)
+// or on the wheel centre (radial).
 Item {
     id: arc
     readonly property var app: Launcher.actionApp

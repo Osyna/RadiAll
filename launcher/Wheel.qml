@@ -179,6 +179,15 @@ Item {
         var dx = x - cx, dy = y - cy
         return Math.sqrt(dx * dx + dy * dy) < innerR
     }
+    // centre of ring item `i` in wheel-local coords (used to place the action arc)
+    function itemCenter(i) {
+        if (isBar) {
+            var lo = (barVertical ? (height - barLen) / 2 : (width - barLen) / 2) + barPad + i * barPitch + barPitch / 2
+            return barVertical ? Qt.point(width / 2, lo) : Qt.point(lo, height / 2)
+        }
+        var a = sliceAng(i)
+        return Qt.point(cx + ringR * Math.cos(a), cy + ringR * Math.sin(a))
+    }
 
     function updateHover(x, y) {
         if (inHole(x, y)) {
@@ -579,7 +588,7 @@ Item {
         onPressAndHold: (m) => {
             if (Launcher.mode !== "apps") return
             var s = wheel.sliceAt(m.x, m.y)
-            if (s >= 0) Launcher.actionApp = wheel.ring[s]
+            if (s >= 0) { Launcher.actionSlice = s; Launcher.actionApp = wheel.ring[s] }
         }
         onClicked: (m) => {
             if (Launcher.actionApp !== null) return

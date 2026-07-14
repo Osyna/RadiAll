@@ -135,6 +135,16 @@ PanelWindow {
         Wheel { id: wheel; anchors.centerIn: parent }
     }
 
-    // per-app action arc (long-press an icon) — tracks the wheel centre
-    ActionArc { anchors.centerIn: wheelWrap }
+    // per-app action arc (long-press an icon). Radial → halo on the wheel centre;
+    // bar/half → pops over the pressed item itself (matches the standalone).
+    ActionArc {
+        readonly property real ctrX: (Launcher.actionApp === null || Launcher.actionSlice < 0 || wheel.layoutMode === 0)
+            ? wheelWrap.x + wheelWrap.width / 2
+            : wheelWrap.x + wheel.itemCenter(Launcher.actionSlice).x
+        readonly property real ctrY: (Launcher.actionApp === null || Launcher.actionSlice < 0 || wheel.layoutMode === 0)
+            ? wheelWrap.y + wheelWrap.height / 2
+            : wheelWrap.y + wheel.itemCenter(Launcher.actionSlice).y
+        x: ctrX - width / 2
+        y: ctrY - height / 2
+    }
 }
