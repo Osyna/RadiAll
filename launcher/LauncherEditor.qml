@@ -364,8 +364,14 @@ Rectangle {
                 Layout.fillWidth: true; Layout.fillHeight: true; Layout.preferredWidth: Skin.s(330)
                 radius: Skin.s(14); color: Skin.tint(0.035)
                 border.width: 1; border.color: Skin.tint(0.07)
-                ColumnLayout {
+                Flickable {
+                    id: leftFlick
                     anchors.fill: parent; anchors.margins: Skin.s(16)
+                    clip: true; contentWidth: width; contentHeight: leftCol.implicitHeight
+                    boundsBehavior: Flickable.StopAtBounds; flickableDirection: Flickable.VerticalFlick
+                    ColumnLayout {
+                    id: leftCol
+                    width: leftFlick.width
                     spacing: Skin.s(18)
 
                 Group {
@@ -640,7 +646,7 @@ Rectangle {
                                font.family: Skin.font; font.pixelSize: Skin.s(12); renderType: Text.NativeRendering }
                     }
                 }
-                    Item { Layout.fillHeight: true }   // push groups to top, card fills height
+                }
                 }
             }
 
@@ -649,8 +655,14 @@ Rectangle {
                 Layout.fillWidth: true; Layout.fillHeight: true; Layout.preferredWidth: Skin.s(330)
                 radius: Skin.s(14); color: Skin.tint(0.035)
                 border.width: 1; border.color: Skin.tint(0.07)
-                ColumnLayout {
+                Flickable {
+                    id: rightFlick
                     anchors.fill: parent; anchors.margins: Skin.s(16)
+                    clip: true; contentWidth: width; contentHeight: rightCol.implicitHeight
+                    boundsBehavior: Flickable.StopAtBounds; flickableDirection: Flickable.VerticalFlick
+                    ColumnLayout {
+                    id: rightCol
+                    width: rightFlick.width
                     spacing: Skin.s(18)
 
                 Group {
@@ -794,7 +806,7 @@ Rectangle {
                         Item { Layout.fillWidth: true }
                     }
                 }
-                    Item { Layout.fillHeight: true }   // push groups to top, card fills height
+                }
                 }
             }
         }

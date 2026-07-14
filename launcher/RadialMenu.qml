@@ -68,9 +68,16 @@ PanelWindow {
         }
     }
     Item {
+        id: keyCatcher
         anchors.fill: parent
         focus: Launcher.visible
-        Keys.onEscapePressed: Launcher.editing ? Launcher.commit() : Launcher.close()
+        // Esc always fully dismisses (ring or settings); settings are saved live.
+        Keys.onEscapePressed: Launcher.close()
+        // grab focus the instant the overlay opens, so Esc works immediately
+        Connections {
+            target: Launcher
+            function onVisibleChanged() { if (Launcher.visible) keyCatcher.forceActiveFocus() }
+        }
     }
 
     // dim backdrop
