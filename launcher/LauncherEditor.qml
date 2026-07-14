@@ -22,6 +22,8 @@ Rectangle {
     property int editActionsIdx: -1  // app index whose action menu is being edited (-1 = none)
     property int iconPickerJ: -1     // custom-action index whose icon is being picked (-1 = none)
     property int colorActionJ: -1    // custom-action index whose glyph colour is being picked (-1 = none)
+    property bool colorActionGlobal: false  // colorActionJ indexes globalActions (not per-app customActions)
+    property bool iconPickerGlobal: false   // iconPickerJ indexes globalActions (not per-app customActions)
     property real colorActionX: 0; property real colorActionY: 0
     property string colorTarget: ""  // which setting the colour picker edits ("accent"|"bg"|"")
     property bool themeMenuOpen: false                 // theme dropdown open?
@@ -248,6 +250,15 @@ Rectangle {
             }
             Rectangle {
                 implicitWidth: Skin.s(66); implicitHeight: Skin.s(32); radius: Skin.s(9)
+                color: resetMa.containsMouse ? Skin.tint(0.12) : Skin.tint(0.06)
+                Text { anchors.centerIn: parent; text: "Reset"; color: Skin.fg
+                       font.family: Skin.font; font.pixelSize: Skin.s(13); font.weight: Font.Medium
+                       renderType: Text.NativeRendering }
+                MouseArea { id: resetMa; anchors.fill: parent; hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor; onClicked: Launcher.resetSettings() }
+            }
+            Rectangle {
+                implicitWidth: Skin.s(66); implicitHeight: Skin.s(32); radius: Skin.s(9)
                 color: doneMa.containsMouse ? Qt.lighter(Skin.accent, 1.15) : Skin.accent
                 Text { anchors.centerIn: parent; text: "Done"; color: "white"
                        font.family: Skin.font; font.pixelSize: Skin.s(13); font.weight: Font.Medium
@@ -397,6 +408,77 @@ Rectangle {
                         color: Skin.fgDim; Layout.fillWidth: true; wrapMode: Text.WordWrap
                         font.family: Skin.font; font.pixelSize: Skin.s(11); renderType: Text.NativeRendering
                     }
+                    RowLayout {
+                        Layout.fillWidth: true; spacing: Skin.s(8)
+                        Field {
+                            id: themeNameField
+                            Layout.fillWidth: true; placeholder: "New theme name"
+                            Component.onCompleted: text = ""
+                        }
+                        Rectangle {
+                            implicitWidth: Skin.s(104); implicitHeight: Skin.s(30); radius: Skin.s(8)
+                            opacity: themeNameField.text.trim() === "" ? 0.4 : 1
+                            color: saveThemeMa.containsMouse && themeNameField.text.trim() !== ""
+                                 ? Qt.lighter(Skin.accent, 1.15) : Skin.accent
+                            Text { anchors.centerIn: parent; text: "Save as theme"; color: "white"
+                                   font.family: Skin.font; font.pixelSize: Skin.s(11); font.weight: Font.Medium
+                                   renderType: Text.NativeRendering }
+                            MouseArea {
+                                id: saveThemeMa; anchors.fill: parent; hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    var n = themeNameField.text.trim()
+                                    if (n !== "") { Launcher.saveAsTheme(n); themeNameField.text = "" }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Group {
+                    heading: "LAYOUT"
+                    SettingRow {
+                        label: "Shape"; labelWidth: Skin.s(80)
+                        RowLayout {
+                            Layout.fillWidth: true; spacing: Skin.s(6)
+                            Repeater {
+                                model: [{ k: "radial", t: "Radial" }, { k: "bar", t: "Bar" }, { k: "half", t: "Half" }]
+                                delegate: Rectangle {
+                                    required property var modelData
+                                    Layout.fillWidth: true; implicitHeight: Skin.s(28); radius: Skin.s(7)
+                                    color: Launcher.settings.layout === modelData.k ? Skin.accent : Skin.tint(0.06)
+                                    Behavior on color { ColorAnimation { duration: 130 } }
+                                    Text { anchors.centerIn: parent; text: modelData.t
+                                           color: Launcher.settings.layout === modelData.k ? "white" : Skin.fg
+                                           font.family: Skin.font; font.pixelSize: Skin.s(12); font.weight: Font.Medium
+                                           renderType: Text.NativeRendering }
+                                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                                onClicked: Launcher.setSetting("layout", modelData.k) }
+                                }
+                            }
+                        }
+                    }
+                    SettingRow {
+                        label: "Position"; labelWidth: Skin.s(80)
+                        RowLayout {
+                            Layout.fillWidth: true; spacing: Skin.s(6)
+                            Repeater {
+                                model: [{ k: "center", t: "●" }, { k: "left", t: "◀" }, { k: "right", t: "▶" }, { k: "top", t: "▲" }, { k: "bottom", t: "▼" }]
+                                delegate: Rectangle {
+                                    required property var modelData
+                                    Layout.fillWidth: true; implicitHeight: Skin.s(28); radius: Skin.s(7)
+                                    color: Launcher.settings.position === modelData.k ? Skin.accent : Skin.tint(0.06)
+                                    Behavior on color { ColorAnimation { duration: 130 } }
+                                    Text { anchors.centerIn: parent; text: modelData.t
+                                           color: Launcher.settings.position === modelData.k ? "white" : Skin.fg
+                                           font.family: Skin.font; font.pixelSize: Skin.s(13); font.weight: Font.Medium
+                                           renderType: Text.NativeRendering }
+                                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                                onClicked: Launcher.setSetting("position", modelData.k) }
+                                }
+                            }
+                        }
+                    }
                 }
 
                 Group {
@@ -446,6 +528,50 @@ Rectangle {
                             Item { Layout.fillWidth: true }
                         }
                     }
+                    SettingRow {
+                        label: "Inactive fill"; labelWidth: Skin.s(80)
+                        RowLayout {
+                            Layout.fillWidth: true; spacing: Skin.s(8)
+                            Repeater {
+                                model: ["", "#22ffffff", "#40ffffff", "#18000000", "#28000000", "#40000000"]
+                                delegate: Rectangle {
+                                    required property var modelData
+                                    implicitWidth: Skin.s(22); implicitHeight: Skin.s(22); radius: width / 2
+                                    color: modelData === "" ? "transparent" : modelData
+                                    border.width: Launcher.settings.segBg === modelData ? 3 : 1
+                                    border.color: Launcher.settings.segBg === modelData ? Skin.tint(0.9) : Skin.tint(0.2)
+                                    Text { anchors.centerIn: parent; visible: modelData === ""; text: "∅"; color: Skin.fgDim
+                                           font.family: Skin.font; font.pixelSize: Skin.s(12); renderType: Text.NativeRendering }
+                                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                                onClicked: Launcher.setSetting("segBg", modelData) }
+                                }
+                            }
+                            CustomChip { onClicked: editor.colorTarget = "segBg" }
+                            Item { Layout.fillWidth: true }
+                        }
+                    }
+                    SettingRow {
+                        label: "Border"; labelWidth: Skin.s(80)
+                        RowLayout {
+                            Layout.fillWidth: true; spacing: Skin.s(8)
+                            Repeater {
+                                model: ["", "#000000", "#24242c", "#6b6b78", "#ffffff", "#e44854", "#0a84ff"]
+                                delegate: Rectangle {
+                                    required property var modelData
+                                    implicitWidth: Skin.s(22); implicitHeight: Skin.s(22); radius: width / 2
+                                    color: modelData === "" ? "transparent" : modelData
+                                    border.width: Launcher.settings.border === modelData ? 3 : 1
+                                    border.color: Launcher.settings.border === modelData ? Skin.tint(0.9) : Skin.tint(0.2)
+                                    Text { anchors.centerIn: parent; visible: modelData === ""; text: "A"; color: Skin.fgDim
+                                           font.family: Skin.font; font.pixelSize: Skin.s(11); renderType: Text.NativeRendering }
+                                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                                onClicked: Launcher.setSetting("border", modelData) }
+                                }
+                            }
+                            CustomChip { onClicked: editor.colorTarget = "border" }
+                            Item { Layout.fillWidth: true }
+                        }
+                    }
                 }
 
                 Group {
@@ -486,6 +612,33 @@ Rectangle {
                                Layout.preferredWidth: Skin.s(40)
                                font.family: Skin.font; font.pixelSize: Skin.s(12); renderType: Text.NativeRendering }
                     }
+                    SettingRow {
+                        label: "Hole size"; labelWidth: Skin.s(90)
+                        Slider { Layout.fillWidth: true; from: 40; to: 130; step: 1
+                                 value: Launcher.settings.holeSize
+                                 onMoved: (v) => Launcher.setSetting("holeSize", v) }
+                        Text { text: Launcher.settings.holeSize + "px"; color: Skin.fgDim; horizontalAlignment: Text.AlignRight
+                               Layout.preferredWidth: Skin.s(40)
+                               font.family: Skin.font; font.pixelSize: Skin.s(12); renderType: Text.NativeRendering }
+                    }
+                    SettingRow {
+                        label: "Auto border"; labelWidth: Skin.s(90)
+                        Toggle { on: Launcher.settings.borderWidth < 0
+                                 onToggled: (v) => Launcher.setSetting("borderWidth", v ? -1 : 2) }
+                        Item { Layout.fillWidth: true }
+                    }
+                    SettingRow {
+                        label: "Border width"; labelWidth: Skin.s(90)
+                        Slider { Layout.fillWidth: true; from: 0; to: 12; step: 0.5
+                                 enabled: Launcher.settings.borderWidth >= 0
+                                 opacity: Launcher.settings.borderWidth >= 0 ? 1 : 0.35
+                                 value: Math.max(0, Launcher.settings.borderWidth)
+                                 onMoved: (v) => Launcher.setSetting("borderWidth", v) }
+                        Text { text: Launcher.settings.borderWidth < 0 ? "auto" : (Launcher.settings.borderWidth + "px")
+                               color: Skin.fgDim; horizontalAlignment: Text.AlignRight
+                               Layout.preferredWidth: Skin.s(40)
+                               font.family: Skin.font; font.pixelSize: Skin.s(12); renderType: Text.NativeRendering }
+                    }
                 }
                     Item { Layout.fillHeight: true }   // push groups to top, card fills height
                 }
@@ -517,10 +670,55 @@ Rectangle {
                         Toggle { on: Launcher.settings.followOutside; onToggled: (v) => Launcher.setSetting("followOutside", v) }
                         Item { Layout.fillWidth: true }
                     }
+                    SettingRow {
+                        label: "Window dots"; labelWidth: Skin.s(150)
+                        Toggle { on: Launcher.settings.showDots; onToggled: (v) => Launcher.setSetting("showDots", v) }
+                        Item { Layout.fillWidth: true }
+                    }
                     Text {
                         text: "Follow cursor: the accent sector tracks your mouse even off the ring."
                         color: Skin.fgDim; Layout.fillWidth: true; wrapMode: Text.WordWrap
                         font.family: Skin.font; font.pixelSize: Skin.s(11); renderType: Text.NativeRendering
+                    }
+                }
+
+                Group {
+                    heading: "SECTIONS"
+                    SettingRow {
+                        label: "Active radius"; labelWidth: Skin.s(110)
+                        Slider { Layout.fillWidth: true; from: 0; to: 28; step: 0.5
+                                 value: Launcher.settings.activeRadius
+                                 onMoved: (v) => Launcher.setSetting("activeRadius", v) }
+                        Text { text: Launcher.settings.activeRadius + "px"; color: Skin.fgDim; horizontalAlignment: Text.AlignRight
+                               Layout.preferredWidth: Skin.s(40)
+                               font.family: Skin.font; font.pixelSize: Skin.s(12); renderType: Text.NativeRendering }
+                    }
+                    SettingRow {
+                        label: "Inactive radius"; labelWidth: Skin.s(110)
+                        Slider { Layout.fillWidth: true; from: 0; to: 28; step: 0.5
+                                 value: Launcher.settings.inactiveRadius
+                                 onMoved: (v) => Launcher.setSetting("inactiveRadius", v) }
+                        Text { text: Launcher.settings.inactiveRadius + "px"; color: Skin.fgDim; horizontalAlignment: Text.AlignRight
+                               Layout.preferredWidth: Skin.s(40)
+                               font.family: Skin.font; font.pixelSize: Skin.s(12); renderType: Text.NativeRendering }
+                    }
+                    SettingRow {
+                        label: "Edge padding"; labelWidth: Skin.s(110)
+                        Slider { Layout.fillWidth: true; from: 0; to: 20; step: 0.5
+                                 value: Launcher.settings.edgePadding
+                                 onMoved: (v) => Launcher.setSetting("edgePadding", v) }
+                        Text { text: Launcher.settings.edgePadding + "px"; color: Skin.fgDim; horizontalAlignment: Text.AlignRight
+                               Layout.preferredWidth: Skin.s(40)
+                               font.family: Skin.font; font.pixelSize: Skin.s(12); renderType: Text.NativeRendering }
+                    }
+                    SettingRow {
+                        label: "Section gap"; labelWidth: Skin.s(110)
+                        Slider { Layout.fillWidth: true; from: 0; to: 24; step: 0.5
+                                 value: Launcher.settings.sectionGap
+                                 onMoved: (v) => Launcher.setSetting("sectionGap", v) }
+                        Text { text: Launcher.settings.sectionGap + "px"; color: Skin.fgDim; horizontalAlignment: Text.AlignRight
+                               Layout.preferredWidth: Skin.s(40)
+                               font.family: Skin.font; font.pixelSize: Skin.s(12); renderType: Text.NativeRendering }
                     }
                 }
 
@@ -719,6 +917,35 @@ Rectangle {
                     id: acol
                     width: parent.width; spacing: Skin.s(6)
 
+                    Text { text: "Accent"; color: Skin.fgDim; font.family: Skin.font; font.pixelSize: Skin.s(11); renderType: Text.NativeRendering }
+                    RowLayout {
+                        Layout.fillWidth: true; spacing: Skin.s(8)
+                        Rectangle {
+                            implicitWidth: Skin.s(22); implicitHeight: Skin.s(22); radius: width / 2
+                            color: "transparent"
+                            readonly property bool sel: !actionsPanel.app || !actionsPanel.app.accent
+                            border.width: sel ? 3 : 1; border.color: sel ? Skin.tint(0.9) : Skin.tint(0.2)
+                            Text { anchors.centerIn: parent; text: "A"; color: Skin.fgDim
+                                   font.family: Skin.font; font.pixelSize: Skin.s(11); renderType: Text.NativeRendering }
+                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                        onClicked: Launcher.setAppAccent(editor.editActionsIdx, "") }
+                        }
+                        Repeater {
+                            model: ["#e44854", "#0a84ff", "#5e5ce6", "#bf5af2", "#ff9f0a", "#30d158", "#64d2ff", "#ff2d55"]
+                            delegate: Rectangle {
+                                required property var modelData
+                                implicitWidth: Skin.s(22); implicitHeight: Skin.s(22); radius: width / 2
+                                color: modelData
+                                readonly property bool sel: actionsPanel.app && actionsPanel.app.accent === modelData
+                                border.width: sel ? 3 : 0; border.color: Skin.tint(0.9)
+                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                            onClicked: Launcher.setAppAccent(editor.editActionsIdx, modelData) }
+                            }
+                        }
+                        CustomChip { onClicked: editor.colorTarget = "appAccent" }
+                        Item { Layout.fillWidth: true }
+                    }
+                    Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Skin.tint(0.08); Layout.topMargin: Skin.s(4); Layout.bottomMargin: Skin.s(4) }
                     Text { text: "App & window actions"; color: Skin.fgDim; font.family: Skin.font; font.pixelSize: Skin.s(11); renderType: Text.NativeRendering }
                     Repeater {
                         model: actionsPanel.templates.filter(function (t) { return t.group !== "Custom" })
@@ -761,7 +988,7 @@ Rectangle {
                                     text: Launcher.gKey; color: cr.modelData.color || Skin.fgDim
                                     font.family: Skin.iconFont; font.pixelSize: Skin.s(14); renderType: Text.NativeRendering
                                 }
-                                MouseArea { id: iconMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { picker2.query = ""; editor.iconPickerJ = cr.index } }
+                                MouseArea { id: iconMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { picker2.query = ""; editor.iconPickerGlobal = false; editor.iconPickerJ = cr.index } }
                             }
                             // glyph colour — click to pick a tint for the fallback key icon
                             Rectangle {
@@ -779,6 +1006,7 @@ Rectangle {
                                     onClicked: {
                                         var p = colorChip.mapToItem(actionsPanel, 0, colorChip.height + Skin.s(6))
                                         editor.colorActionX = p.x; editor.colorActionY = p.y
+                                        editor.colorActionGlobal = false
                                         editor.colorActionJ = cr.index
                                     }
                                 }
@@ -808,6 +1036,76 @@ Rectangle {
                                    font.family: Skin.font; font.pixelSize: Skin.s(12); renderType: Text.NativeRendering }
                         }
                         MouseArea { id: addca; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: Launcher.addCustomAction(editor.editActionsIdx) }
+                    }
+                    Text { text: "Global actions (all apps)"; color: Skin.fgDim; font.family: Skin.font; font.pixelSize: Skin.s(11); Layout.topMargin: Skin.s(8); renderType: Text.NativeRendering }
+                    Repeater {
+                        model: Launcher.settings.globalActions
+                        delegate: RowLayout {
+                            id: gr
+                            required property int index
+                            required property var modelData
+                            Layout.fillWidth: true; spacing: Skin.s(6)
+                            Rectangle {
+                                implicitWidth: Skin.s(30); implicitHeight: Skin.s(30); radius: Skin.s(7)
+                                color: gIconMa.containsMouse ? Skin.tint(0.14) : Skin.tint(0.08)
+                                readonly property bool hasPath: gr.modelData.icon && gr.modelData.icon.charAt(0) === "/"
+                                Image {
+                                    anchors.centerIn: parent; width: Skin.s(20); height: Skin.s(20); sourceSize.width: width; sourceSize.height: width
+                                    visible: parent.hasPath; source: parent.hasPath ? "file://" + gr.modelData.icon : ""; smooth: true; asynchronous: true
+                                    layer.enabled: parent.hasPath
+                                    layer.effect: MultiEffect { colorization: 1.0; colorizationColor: gr.modelData.color || Skin.fg }
+                                }
+                                Text {
+                                    anchors.centerIn: parent; visible: !parent.hasPath
+                                    text: Launcher.gKey; color: gr.modelData.color || Skin.fgDim
+                                    font.family: Skin.iconFont; font.pixelSize: Skin.s(14); renderType: Text.NativeRendering
+                                }
+                                MouseArea { id: gIconMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { picker2.query = ""; editor.iconPickerGlobal = true; editor.iconPickerJ = gr.index } }
+                            }
+                            Rectangle {
+                                id: gColorChip
+                                implicitWidth: Skin.s(22); implicitHeight: Skin.s(22); radius: width / 2
+                                color: gr.modelData.color || "transparent"
+                                border.width: gr.modelData.color ? 0 : 1; border.color: Skin.tint(0.3)
+                                Rectangle {
+                                    anchors.centerIn: parent; width: Skin.s(8); height: width; radius: width / 2
+                                    visible: !gr.modelData.color; color: "transparent"
+                                    border.width: 1; border.color: Skin.tint(0.3)
+                                }
+                                MouseArea {
+                                    anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        var p = gColorChip.mapToItem(actionsPanel, 0, gColorChip.height + Skin.s(6))
+                                        editor.colorActionX = p.x; editor.colorActionY = p.y
+                                        editor.colorActionGlobal = true
+                                        editor.colorActionJ = gr.index
+                                    }
+                                }
+                            }
+                            Field {
+                                Layout.fillWidth: true; placeholder: "Label"
+                                Component.onCompleted: text = gr.modelData.label
+                                onEdited: (t) => Launcher.setGlobalField(gr.index, "label", t)
+                            }
+                            ShortcutRecorder {
+                                value: gr.modelData.shortcut || ""
+                                valid: Launcher.shortcutValid(gr.modelData.shortcut)
+                                onCaptured: (s) => Launcher.setGlobalShortcut(gr.index, s)
+                            }
+                            IconBtn { glyph: "✕"; onClicked: Launcher.removeGlobalAction(gr.index) }
+                        }
+                    }
+                    Rectangle {
+                        Layout.fillWidth: true; implicitHeight: Skin.s(32); radius: Skin.s(8)
+                        color: addga.containsMouse ? Skin.tint(0.12) : Skin.tint(0.06)
+                        RowLayout {
+                            anchors.centerIn: parent; spacing: Skin.s(8)
+                            Text { text: "\uf11c"; color: Skin.fg; font.family: Skin.iconFont
+                                   font.pixelSize: Skin.s(13); renderType: Text.NativeRendering }
+                            Text { text: "Add global action"; color: Skin.fg
+                                   font.family: Skin.font; font.pixelSize: Skin.s(12); renderType: Text.NativeRendering }
+                        }
+                        MouseArea { id: addga; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: Launcher.addGlobalAction() }
                     }
                 }
             }
@@ -852,7 +1150,7 @@ Rectangle {
                             }
                             MouseArea {
                                 id: im; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                                onClicked: { Launcher.setCustomIcon(editor.editActionsIdx, editor.iconPickerJ, modelData.path); editor.iconPickerJ = -1 }
+                                onClicked: { if (editor.iconPickerGlobal) Launcher.setGlobalIcon(editor.iconPickerJ, modelData.path); else Launcher.setCustomIcon(editor.editActionsIdx, editor.iconPickerJ, modelData.path); editor.iconPickerJ = -1 }
                             }
                         }
                     }
@@ -884,20 +1182,20 @@ Rectangle {
                             model: ["#e44854", "#ff9f0a", "#ffd60a", "#30d158", "#64d2ff", "#0a84ff", "#5e5ce6", "#bf5af2", "#ff2d55", "#ffffff"]
                             delegate: Rectangle {
                                 required property var modelData
-                                readonly property bool sel: editor.colorActionJ >= 0
-                                    && actionsPanel.custom[editor.colorActionJ]
-                                    && actionsPanel.custom[editor.colorActionJ].color === modelData
+                                readonly property bool sel: editor.colorActionJ >= 0 && (editor.colorActionGlobal
+                                    ? (Launcher.settings.globalActions[editor.colorActionJ] && Launcher.settings.globalActions[editor.colorActionJ].color === modelData)
+                                    : (actionsPanel.custom[editor.colorActionJ] && actionsPanel.custom[editor.colorActionJ].color === modelData))
                                 width: Skin.s(24); height: width; radius: width / 2
                                 color: modelData
                                 border.width: sel ? 2 : 0; border.color: Skin.tint(0.9)
                                 MouseArea {
                                     anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                                    onClicked: { Launcher.setCustomColor(editor.editActionsIdx, editor.colorActionJ, modelData); editor.colorActionJ = -1 }
+                                    onClicked: { if (editor.colorActionGlobal) Launcher.setGlobalColor(editor.colorActionJ, modelData); else Launcher.setCustomColor(editor.editActionsIdx, editor.colorActionJ, modelData); editor.colorActionJ = -1 }
                                 }
                             }
                         }
                         // full HSV picker — same one used for Accent/Background
-                        CustomChip { onClicked: editor.colorTarget = "action" }
+                        CustomChip { onClicked: editor.colorTarget = editor.colorActionGlobal ? "globalColor" : "action" }
                     }
                     Rectangle {   // clear back to the theme default
                         Layout.fillWidth: true; implicitHeight: Skin.s(26); radius: Skin.s(7)
@@ -905,7 +1203,7 @@ Rectangle {
                         Text { anchors.centerIn: parent; text: "Default colour"; color: Skin.fg
                                font.family: Skin.font; font.pixelSize: Skin.s(12); renderType: Text.NativeRendering }
                         MouseArea { id: clrMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                                    onClicked: { Launcher.setCustomColor(editor.editActionsIdx, editor.colorActionJ, ""); editor.colorActionJ = -1 } }
+                                    onClicked: { if (editor.colorActionGlobal) Launcher.setGlobalColor(editor.colorActionJ, ""); else Launcher.setCustomColor(editor.editActionsIdx, editor.colorActionJ, ""); editor.colorActionJ = -1 } }
                     }
                 }
             }
@@ -974,22 +1272,37 @@ Rectangle {
         property bool loading: false
         property color seed: "black"
         readonly property color current: Qt.hsva(hue, sat, bri, 1)
-        // "action" = a custom-shortcut glyph colour; otherwise a setting (accent/bg)
-        readonly property bool actionMode: editor.colorTarget === "action"
-        readonly property string title: actionMode ? "Icon colour"
-                                      : (editor.colorTarget === "bg" ? "Background" : "Accent")
+        // colour target routes to the right setter: settings key (accent/bg/segBg/border),
+        // per-app accent, custom-action glyph, or global-action glyph.
+        readonly property string title:
+              editor.colorTarget === "action" || editor.colorTarget === "globalColor" ? "Icon colour"
+            : editor.colorTarget === "appAccent" ? "App accent"
+            : editor.colorTarget === "bg" ? "Background"
+            : editor.colorTarget === "segBg" ? "Inactive fill"
+            : editor.colorTarget === "border" ? "Border"
+            : "Accent"
 
         function h2(x) { var s = Math.round(x * 255).toString(16); return s.length < 2 ? "0" + s : s }
         function toHex(c) { return "#" + h2(c.r) + h2(c.g) + h2(c.b) }
         function readSource() {
-            if (actionMode) {
+            if (editor.colorTarget === "action") {
                 var a = actionsPanel.custom[editor.colorActionJ]
                 return (a && a.color) ? a.color : Skin.accent
+            }
+            if (editor.colorTarget === "globalColor") {
+                var g = Launcher.settings.globalActions[editor.colorActionJ]
+                return (g && g.color) ? g.color : Skin.accent
+            }
+            if (editor.colorTarget === "appAccent") {
+                var ap = Launcher.apps[editor.editActionsIdx]
+                return (ap && ap.accent) ? ap.accent : Skin.accent
             }
             return Launcher.settings[editor.colorTarget]
         }
         function writeValue(hex) {
-            if (actionMode) Launcher.setCustomColor(editor.editActionsIdx, editor.colorActionJ, hex)
+            if (editor.colorTarget === "action") Launcher.setCustomColor(editor.editActionsIdx, editor.colorActionJ, hex)
+            else if (editor.colorTarget === "globalColor") Launcher.setGlobalColor(editor.colorActionJ, hex)
+            else if (editor.colorTarget === "appAccent") Launcher.setAppAccent(editor.editActionsIdx, hex)
             else Launcher.setSetting(editor.colorTarget, hex)
         }
         function loadFrom(c) {

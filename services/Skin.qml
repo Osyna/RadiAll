@@ -54,17 +54,52 @@ Singleton {
         font:        "SF Pro Text",
         fontDisplay: "SF Pro Display",
         iconFont:    "JetBrainsMono Nerd Font",
-        monoFont:    "JetBrainsMono Nerd Font"
+        monoFont:    "JetBrainsMono Nerd Font",
+
+        // ring/arc surfaces — themes may override; transparent = auto-derive
+        segBg:       "#00000000",   // inactive-section fill (off)
+        sector:      "#00000000",   // hovered-wedge fill (auto = accent mix)
+        onBand:      "#00000000",   // icon/glyph ink on the band (auto by band luma)
+        dot:         "#00000000",   // open-window dot (auto by band luma)
+        labelFg:     "#ffffffff",   // centre pill text
+        rim:         "#00000000",   // ring outline colour (auto = edge/border)
+        rimWidth:    -1,            // ring outline width px (-1 = auto)
+        backdrop:    "#000000",     // dim backdrop behind the ring
+        settingsBtn: "#ffffffff",   // settings disc
+        arcBg:       Qt.rgba(20/255, 20/255, 24/255, 0.97),   // action-arc band
+        arcStroke:   Qt.rgba(1, 1, 1, 0.08),                  // action-arc band edge
+        arcBtn:      Qt.rgba(1, 1, 1, 0.10),                  // action-arc button idle
+        arcBtnHover: "#00000000"    // action-arc button hover (auto = accent)
     })
 
-    property var t: ({})                                   // overrides from the active theme file
+    property var t: ({})                                   // resolved overrides (after `extends` merge)
     function v(k) { return t[k] !== undefined ? t[k] : d[k] }   // override-or-default
+
+    // Resolve a theme's `extends:` chain synchronously (parent keys first, child
+    // overrides on top). XHR does a blocking local-file read; depth-capped.
+    function loadThemeFile(nm) {
+        try {
+            var xhr = new XMLHttpRequest()
+            xhr.open("GET", "file://" + Quickshell.shellDir + "/themes/" + nm + ".json", false)
+            xhr.send()
+            if (xhr.status === 200 || xhr.status === 0) return JSON.parse(xhr.responseText)
+        } catch (e) { console.log("Skin: extends load failed", nm, e) }
+        return null
+    }
+    function resolveExtends(obj, depth) {
+        if (!obj || obj.extends === undefined || depth > 8) return obj
+        var parent = loadThemeFile(obj.extends)
+        if (!parent) return obj
+        var merged = Object.assign({}, resolveExtends(parent, depth + 1), obj)
+        delete merged.extends
+        return merged
+    }
 
     FileView {
         path: Quickshell.shellDir + "/themes/" + root.name + ".json"
         watchChanges: true
         onFileChanged: reload()
-        onLoaded: { try { root.t = JSON.parse(text()) } catch (e) { console.log("Theme: bad", root.name, "—", e); root.t = ({}) } }
+        onLoaded: { try { root.t = root.resolveExtends(JSON.parse(text()), 0) } catch (e) { console.log("Theme: bad", root.name, "—", e); root.t = ({}) } }
         onLoadFailed: (err) => { root.t = ({}) }            // unknown theme → built-in defaults
     }
 
@@ -95,8 +130,24 @@ Singleton {
     readonly property color sep: v("sep")
 
     // ring outline: bold cell-shading when a theme sets `edge` (else transparent → subtle auto edge)
-    readonly property color edge:      v("edge")
+    readonly property color edge:      t.edge !== undefined ? t.edge : (Launcher.settings.border || d.edge)
     readonly property real  edgeWidth: v("edgeWidth")
+
+    // inactive-section fill: theme key > Look→Inactive-fill picker > off
+    readonly property color segBg: t.segBg !== undefined ? t.segBg : (Launcher.settings.segBg || d.segBg)
+    // optional ring/arc overrides (the wheel auto-derives when transparent)
+    readonly property color sector:      v("sector")
+    readonly property color onBand:      v("onBand")
+    readonly property color dot:         v("dot")
+    readonly property color labelFg:     v("labelFg")
+    readonly property color rim:         v("rim")
+    readonly property real  rimWidth:    v("rimWidth")
+    readonly property color backdrop:    v("backdrop")
+    readonly property color settingsBtn: v("settingsBtn")
+    readonly property color arcBg:       v("arcBg")
+    readonly property color arcStroke:   v("arcStroke")
+    readonly property color arcBtn:      v("arcBtn")
+    readonly property color arcBtnHover: v("arcBtnHover")
 
     readonly property color panelBg:     v("panelBg")
     readonly property color labelPillBg: v("labelPillBg")

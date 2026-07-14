@@ -95,9 +95,13 @@ hand-edit.
 
 ### Theme it
 
-Colours, ring and icon size, dim, opacity, follow-cursor, keybinds. Change a
-value and the ring updates as you look at it. Themes are plain JSON, so they
-drop straight into your dotfiles.
+Pick a **layout** — radial donut, a dock **bar**, or a **half ring** flush to a
+screen edge — then tune colours (accent, background, inactive-fill, border),
+ring / icon / hole size, segmented-section shape, dim, opacity, follow-cursor
+and keybinds. Give any app its own accent. Change a value and the ring updates
+as you look at it. **11 bundled themes**, plain JSON and composable with
+`extends:`; **Save as theme** snapshots your current look straight into your
+dotfiles.
 
 </td>
 <td width="50%"><img src="asset/demo/Themes_customisation.gif" width="100%" alt="Live theming"></td>
@@ -153,8 +157,8 @@ unless you delete them.
 ## How it works
 
 Nothing exotic, it's a plain Quickshell config. `shell.qml` registers the ring
-shortcuts, draws a transparent layer-shell overlay on every screen, and starts
-the tray helper. Window data comes from Hyprland's IPC when you're on Hyprland
+shortcuts, draws a transparent layer-shell overlay on the active screen, and
+starts the tray helper. Window data comes from Hyprland's IPC when you're on Hyprland
 and from the generic wlr-foreign-toplevel protocol everywhere else, so the same
 code runs on sway, river, Wayfire, and the rest. State is JSON in
 `~/.config/quickshell/radiall/`, easy to read and commit.

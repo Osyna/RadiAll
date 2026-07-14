@@ -5,10 +5,12 @@ import QtQuick.Shapes
 import QtQuick.Effects
 import "../services"
 
-// The radial wheel: band with a transparent hole, app icons on the ring, an accent
-// pie-sector that follows the cursor's ANGLE (whole-slice zones, gapless), a centre
-// name pill, and a settings button that appears after hovering the hole for 2s.
-// Reused by RadialMenu (interactive) and the settings preview (enabled:false).
+// The wheel — three layouts (radial donut / linear bar / half ring), an accent
+// section that tracks the cursor's angle (gapless zones), optional segmented
+// sections, per-app accent, a centre hole (radial/half) with name pill +
+// settings button, and open-window dots. Reused by RadialMenu (interactive) and
+// the settings preview (enabled:false). Layout/section/colour geometry mirrors
+// the Rust+Slint standalone.
 Item {
     id: wheel
     property real uiScale: 1.0
@@ -18,17 +20,49 @@ Item {
     readonly property var st: Launcher.settings
     readonly property var ring: Launcher.ringModel
     readonly property int count: ring.length
-    readonly property real ringR:  Skin.s(st.ringRadius) * uiScale
-    readonly property real iconBox: Skin.s(st.iconSize) * uiScale
-    readonly property real outerR: ringR + iconBox * 0.96
-    readonly property real innerR: Math.max(Skin.s(64) * uiScale, ringR - iconBox * 0.90)
+
+    // ---- layout engine ----
+    readonly property int layoutMode: st.layout === "bar" ? 1 : (st.layout === "half" ? 2 : 0)
+    readonly property bool isBar: layoutMode === 1
+    readonly property bool isHalf: layoutMode === 2
+    readonly property string pos: st.position || "center"
+
+    readonly property real ringR:   Skin.s(st.ringRadius) * uiScale
+    readonly property real iconBox:  Skin.s(st.iconSize) * uiScale
+    readonly property real outerR:   ringR + iconBox * 0.96
+    readonly property real innerR:   Math.max(Skin.s(st.holeSize) * uiScale, ringR - iconBox * 0.90)
+    // linear-bar metrics
+    readonly property real barPitch: iconBox + Skin.s(18) * uiScale
+    readonly property real barThick: iconBox + Skin.s(26) * uiScale
+    readonly property real barPad:   Skin.s(16) * uiScale
+    readonly property real barLen:   count * barPitch + 2 * barPad
+    readonly property bool barVertical: isBar && (pos === "left" || pos === "right")
+
+    // span + base angle (radial = full circle from the top; half = 180° opening
+    // away from the anchored screen edge)
+    readonly property real spanRad: isHalf ? Math.PI : 2 * Math.PI
+    readonly property real segAng:  count > 0 ? spanRad / count : 0
+    readonly property real a0Deg: {
+        if (!isHalf) return 0
+        switch (pos) {
+        case "top":   return 0      // opens downward
+        case "left":  return -90    // opens right
+        case "right": return 90     // opens left
+        default:      return 180    // bottom / center: opens up
+        }
+    }
+    readonly property real a0Rad: a0Deg * Math.PI / 180
+    readonly property real wcBase: isHalf ? a0Rad + segAng / 2 : -Math.PI / 2   // centre of slice 0
+    readonly property real midRad: a0Rad + Math.PI / 2                          // half: toward visible hemisphere
+    function sliceAng(i) { return isHalf ? a0Rad + (i + 0.5) * segAng : -Math.PI / 2 + i * segAng }
 
     property int hoveredIndex: -1
     readonly property int effIndex: hoveredIndex >= 0 ? hoveredIndex : forceSlice
     property int activeIndex: 0
     onEffIndexChanged: if (effIndex >= 0) activeIndex = effIndex
-    // label: app name on hover; for a multi-window app also show the selected
-    // window's title + "(i/N)" so scrolling previews which window will be targeted.
+
+    // label: app name on hover; multi-window apps also show the selected window's
+    // title + "(i/N)" so scrolling previews which window will be targeted.
     readonly property string shownLabel: {
         if (effIndex < 0 || effIndex >= count) return forceLabel
         void Launcher.winSel; void Compositor.windows
@@ -41,65 +75,107 @@ Item {
     }
     property bool showSettingsBtn: false
 
-    // live thumbnail source: the selected window of the hovered app (settings-gated).
-    // Only in the interactive wheel (uiScale 1), never the tiny settings preview.
+    // live thumbnail of the selected window (settings-gated; radial/half only,
+    // never the tiny settings preview or the bar).
     readonly property var thumbSource: {
         void Launcher.winSel; void Compositor.windows
-        if (!st.thumbnails || effIndex < 0 || effIndex >= count) return null
+        if (!st.thumbnails || isBar || effIndex < 0 || effIndex >= count) return null
         var w = Launcher.windowFor(ring[effIndex])
         return w ? Compositor.capture(w) : null
     }
     readonly property bool thumbActive: thumbSource !== null
 
-    // accumulated sector rotation, always shortest way (no full-circle roll on wrap)
+    // accent rotation (radial/half): shortest-path accumulator (no full-circle roll)
     property real sectorRotation: 0
     onActiveIndexChanged: {
         if (count <= 0) return
-        var target = activeIndex * (360 / count)
+        var target = activeIndex * (spanRad / count) * 180 / Math.PI
         var curNorm = ((sectorRotation % 360) + 360) % 360
         var delta = ((target - curNorm) % 360 + 540) % 360 - 180
         sectorRotation += delta
     }
 
-    // palette
+    // ---- palette ----
     function mixw(c, t) { return Qt.rgba(c.r * (1 - t) + t, c.g * (1 - t) + t, c.b * (1 - t) + t, 1) }
     readonly property color accentC: Skin.accent
+    // per-app accent: the active slice's own accent overrides the global one
+    readonly property color activeAccent: {
+        var it = (effIndex >= 0 && effIndex < count) ? ring[effIndex] : null
+        return (it && it.accent) ? it.accent : accentC
+    }
     readonly property color bandC:   Skin.bg
-    readonly property color sectorC: mixw(accentC, 0.04)
+    readonly property color sectorC: Skin.sector.a > 0.001 ? Skin.sector : mixw(activeAccent, 0.04)
     readonly property real  bandLum: 0.299 * bandC.r + 0.587 * bandC.g + 0.114 * bandC.b
-    // ring outline. A theme with a solid `edge` colour gets a bold cell-shaded border;
-    // otherwise fall back to the subtle auto edge that adapts to the band's luminance.
+    readonly property color inkC:    Skin.onBand.a > 0.001 ? Skin.onBand : (bandLum > 0.5 ? "#191a2e" : "white")
+    readonly property color labelFg: Skin.labelFg
+    // ring outline: theme rim > theme edge (cell) > adaptive auto edge
     readonly property bool  cellEdge: Skin.edge.a > 0.001
-    readonly property color edgeC:   cellEdge ? Skin.edge : (bandLum > 0.5 ? Qt.rgba(0, 0, 0, 1) : Qt.rgba(1, 1, 1, 1))
-    readonly property real  edgeA:   cellEdge ? Skin.edge.a : (bandLum > 0.5 ? 0.10 : 0.14)
-    readonly property real  edgeW:   (cellEdge ? Skin.s(Skin.edgeWidth) : 1) * uiScale
+    readonly property color edgeC:   Skin.rim.a > 0.001 ? Skin.rim
+                                    : (cellEdge ? Skin.edge : (bandLum > 0.5 ? Qt.rgba(0, 0, 0, 1) : Qt.rgba(1, 1, 1, 1)))
+    readonly property real  edgeA:   (Skin.rim.a > 0.001 || cellEdge) ? edgeC.a : (bandLum > 0.5 ? 0.10 : 0.14)
+    // width: theme rimWidth > Look→Border width > auto (cell edgeWidth / 1px)
+    readonly property real  edgeW:   (Skin.rimWidth >= 0 ? Skin.rimWidth
+                                     : (st.borderWidth >= 0 ? st.borderWidth
+                                     : (cellEdge ? Skin.edgeWidth : 1))) * uiScale
 
-    implicitWidth: outerR * 2
-    implicitHeight: outerR * 2
+    implicitWidth:  isBar ? (barVertical ? barThick : barLen) : outerR * 2
+    implicitHeight: isBar ? (barVertical ? barLen : barThick) : outerR * 2
 
-    // geometry
+    // ---- geometry ----
     readonly property real cx: width / 2
     readonly property real cy: height / 2
-    readonly property real sw: Skin.s(12) * uiScale
-    readonly property real segAng: count > 0 ? 2 * Math.PI / count : 0
-    // cell-shaded wedge: tuck the fill/divider ends half a border-width UNDER the rim arcs, so
-    // the fill's AA edge can't bleed a hairline into the hole/outside. Non-cell: soft inset pill.
-    readonly property real ro: outerR - (cellEdge ? edgeW / 2 : sw / 2 + 3 * uiScale)
-    readonly property real ri: innerR + (cellEdge ? edgeW / 2 : sw / 2 + 3 * uiScale)
-    // FULL slice, no angular gap — zones tile the circle equally
-    readonly property real a0: -Math.PI / 2 - segAng / 2
-    readonly property real a1: -Math.PI / 2 + segAng / 2
 
-    // which slice a point falls in (-1 = hole or outside ring)
+    // ---- section styling (segmented-pie: inset, rounded corners, gap) ----
+    readonly property real gk: uiScale
+    readonly property real srad: cellEdge ? 0 : Skin.s(st.activeRadius) * gk
+    readonly property real irad: cellEdge ? 0 : Skin.s(st.inactiveRadius) * gk
+    readonly property real sinset: cellEdge ? edgeW / 2 : Skin.s(st.edgePadding) * gk
+    readonly property real hgap: Skin.s(st.sectionGap) * gk / 2
+    readonly property real wspanRad: count <= 1 ? (359.9 * Math.PI / 180) : segAng
+    // active wedge (fixed at the top, rotated to the active slice)
+    readonly property real sro: Math.max(outerR - sinset - srad, 1)
+    readonly property real sri: Math.max(Math.min(innerR + sinset + srad, sro - 0.5), 1)
+    readonly property real wgo: Math.min((hgap + srad) / sro, wspanRad / 2 - 0.001)
+    readonly property real wgi: Math.min((hgap + srad) / sri, wspanRad / 2 - 0.001)
+    readonly property real wa0o: wcBase - wspanRad / 2 + wgo
+    readonly property real wa1o: wcBase + wspanRad / 2 - wgo
+    readonly property real wa0i: wcBase - wspanRad / 2 + wgi
+    readonly property real wa1i: wcBase + wspanRad / 2 - wgi
+    function degOf(r) { return r * 180 / Math.PI }
+
+    // centre-content offset (half ring nudges it into the visible hemisphere)
+    readonly property real ccOffX: isHalf ? innerR * 0.5 * Math.cos(midRad) : 0
+    readonly property real ccOffY: isHalf ? innerR * 0.5 * Math.sin(midRad) : 0
+
+    // which slice a point falls in (-1 = hole / outside)
     function sliceAt(x, y) {
+        if (count <= 0) return -1
+        if (isBar) {
+            var along = barVertical ? y : x
+            var lo = (barVertical ? (height - barLen) / 2 : (width - barLen) / 2) + barPad
+            var rel = along - lo
+            if (!st.followOutside && (rel < 0 || rel > count * barPitch)) return -1
+            return Math.max(0, Math.min(count - 1, Math.floor(rel / barPitch)))
+        }
         var dx = x - cx, dy = y - cy
         var d = Math.sqrt(dx * dx + dy * dy)
-        if (d < innerR) return -1                       // the hole is never a slice
-        if (d > outerR && !st.followOutside) return -1  // outside the ring, unless following the cursor
+        if (d < innerR) return -1
+        if (d > outerR && !st.followOutside) return -1
         var a = Math.atan2(dy, dx)
+        if (isHalf) {
+            var loc = a - a0Rad
+            while (loc < 0) loc += 2 * Math.PI
+            while (loc >= 2 * Math.PI) loc -= 2 * Math.PI
+            if (loc > Math.PI) {                      // hidden hemisphere
+                if (!st.followOutside) return -1
+                loc = (loc > Math.PI * 1.5) ? 0 : Math.PI    // snap to nearest visible end
+            }
+            return Math.max(0, Math.min(count - 1, Math.floor(loc / segAng)))
+        }
         return ((Math.round((a + Math.PI / 2) / segAng) % count) + count) % count
     }
     function inHole(x, y) {
+        if (isBar) return false
         var dx = x - cx, dy = y - cy
         return Math.sqrt(dx * dx + dy * dy) < innerR
     }
@@ -121,109 +197,193 @@ Item {
             return
         }
         var s = sliceAt(x, y)
-        if (s < 0) { Launcher.close(); return }   // corner outside the ring
-        Launcher.activateItem(ring[s], button)    // apps/windows: focus/launch; actions: run
+        if (s < 0) { Launcher.close(); return }
+        Launcher.activateItem(ring[s], button)
     }
 
     Timer { id: centerTimer; interval: 2000; onTriggered: wheel.showSettingsBtn = true }
 
-    // band with a transparent hole
+    // ---- radial / half: band with a transparent hole ----
     Canvas {
         id: donut
         anchors.fill: parent
+        visible: !wheel.isBar
         onPaint: {
             var ctx = getContext("2d"); ctx.reset()
-            var c = width / 2, op = wheel.st.wheelOpacity
+            if (wheel.isBar) return
+            var op = wheel.st.wheelOpacity
             function css(col, a) { return "rgba(" + Math.round(col.r * 255) + "," + Math.round(col.g * 255) + "," + Math.round(col.b * 255) + "," + a + ")" }
-            ctx.beginPath(); ctx.arc(c, c, wheel.outerR, 0, 2 * Math.PI); ctx.closePath()
+            ctx.beginPath(); ctx.arc(wheel.cx, wheel.cy, wheel.outerR, 0, 2 * Math.PI); ctx.closePath()
             ctx.fillStyle = css(wheel.bandC, op); ctx.fill()
             ctx.globalCompositeOperation = "destination-out"
-            ctx.beginPath(); ctx.arc(c, c, wheel.innerR, 0, 2 * Math.PI); ctx.closePath(); ctx.fill()
+            ctx.beginPath(); ctx.arc(wheel.cx, wheel.cy, wheel.innerR, 0, 2 * Math.PI); ctx.closePath(); ctx.fill()
             ctx.globalCompositeOperation = "source-over"
         }
         Connections { target: Launcher; function onSettingsChanged() { donut.requestPaint() } }
-        // theme colours resolve async after a switch — repaint when the band or edge changes
         Connections { target: wheel; function onBandCChanged() { donut.requestPaint() } }
         Connections { target: wheel; function onEdgeCChanged() { donut.requestPaint() } }
         onWidthChanged: requestPaint()
+        onHeightChanged: requestPaint()
     }
 
-    // accent pie sector — fixed top wedge rotated to the active slice (MSAA, no seam)
+    // ---- radial / half: inactive segmented sections (only when a fill is set) ----
+    Repeater {
+        model: (!wheel.isBar && Skin.segBg.a > 0.001) ? wheel.count : 0
+        delegate: Shape {
+            id: seg
+            required property int index
+            anchors.fill: parent
+            antialiasing: true
+            layer.enabled: true; layer.smooth: true; layer.samples: 4
+            readonly property real ca: wheel.sliceAng(index)
+            readonly property real gro: Math.max(wheel.outerR - wheel.sinset - wheel.irad, 1)
+            readonly property real gri: Math.max(Math.min(wheel.innerR + wheel.sinset + wheel.irad, gro - 0.5), 1)
+            readonly property real ggo: Math.min((wheel.hgap + wheel.irad) / gro, wheel.wspanRad / 2 - 0.001)
+            readonly property real ggi: Math.min((wheel.hgap + wheel.irad) / gri, wheel.wspanRad / 2 - 0.001)
+            ShapePath {
+                fillColor: Skin.segBg; strokeColor: Skin.segBg
+                strokeWidth: 2 * wheel.irad + 0.5
+                joinStyle: ShapePath.RoundJoin; capStyle: ShapePath.RoundCap
+                startX: wheel.cx + seg.gro * Math.cos(seg.ca - wheel.wspanRad / 2 + seg.ggo)
+                startY: wheel.cy + seg.gro * Math.sin(seg.ca - wheel.wspanRad / 2 + seg.ggo)
+                PathAngleArc { centerX: wheel.cx; centerY: wheel.cy; radiusX: seg.gro; radiusY: seg.gro
+                               startAngle: wheel.degOf(seg.ca - wheel.wspanRad / 2 + seg.ggo)
+                               sweepAngle: wheel.degOf(wheel.wspanRad - 2 * seg.ggo) }
+                PathLine { x: wheel.cx + seg.gri * Math.cos(seg.ca + wheel.wspanRad / 2 - seg.ggi)
+                           y: wheel.cy + seg.gri * Math.sin(seg.ca + wheel.wspanRad / 2 - seg.ggi) }
+                PathAngleArc { centerX: wheel.cx; centerY: wheel.cy; radiusX: seg.gri; radiusY: seg.gri
+                               startAngle: wheel.degOf(seg.ca + wheel.wspanRad / 2 - seg.ggi)
+                               sweepAngle: -wheel.degOf(wheel.wspanRad - 2 * seg.ggi) }
+                PathLine { x: wheel.cx + seg.gro * Math.cos(seg.ca - wheel.wspanRad / 2 + seg.ggo)
+                           y: wheel.cy + seg.gro * Math.sin(seg.ca - wheel.wspanRad / 2 + seg.ggo) }
+            }
+        }
+    }
+
+    // ---- radial / half: accent sector wedge (rounded annular sector, SSAA) ----
     Shape {
         id: sector
         anchors.fill: parent
+        visible: !wheel.isBar && wheel.effIndex >= 0 && wheel.count > 0
         antialiasing: true
-        // supersample: render at 2× into the layer then downscale smoothly (SSAA).
-        // reliable AA even where MSAA FBOs aren't honoured; no CurveRenderer seam.
         layer.enabled: true
         layer.smooth: true
         layer.samples: 8
         layer.textureSize: Qt.size(width * 2, height * 2)
-        visible: wheel.effIndex >= 0 && wheel.count > 0
         opacity: visible ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: 110; easing.type: Easing.OutCubic } }
         transformOrigin: Item.Center
         rotation: wheel.sectorRotation
         Behavior on rotation { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
-        // accent fill only — no navy around the arcs (those are the ring's own outline, drawn
-        // by the rim on top). In cell mode the stroke is hairline so the fill doesn't bleed.
         ShapePath {
             fillColor: wheel.sectorC
             strokeColor: wheel.sectorC
-            strokeWidth: wheel.cellEdge ? 1 : wheel.sw
+            strokeWidth: wheel.cellEdge ? 1 : Math.max(2 * wheel.srad, 1)
             joinStyle: ShapePath.RoundJoin
             capStyle: ShapePath.RoundCap
-            startX: wheel.cx + wheel.ro * Math.cos(wheel.a0)
-            startY: wheel.cy + wheel.ro * Math.sin(wheel.a0)
-            PathAngleArc { centerX: wheel.cx; centerY: wheel.cy; radiusX: wheel.ro; radiusY: wheel.ro
-                           startAngle: wheel.a0 * 180 / Math.PI; sweepAngle: (wheel.a1 - wheel.a0) * 180 / Math.PI }
-            PathLine { x: wheel.cx + wheel.ri * Math.cos(wheel.a1); y: wheel.cy + wheel.ri * Math.sin(wheel.a1) }
-            PathAngleArc { centerX: wheel.cx; centerY: wheel.cy; radiusX: wheel.ri; radiusY: wheel.ri
-                           startAngle: wheel.a1 * 180 / Math.PI; sweepAngle: -(wheel.a1 - wheel.a0) * 180 / Math.PI }
-            PathLine { x: wheel.cx + wheel.ro * Math.cos(wheel.a0); y: wheel.cy + wheel.ro * Math.sin(wheel.a0) }
+            startX: wheel.cx + wheel.sro * Math.cos(wheel.wa0o)
+            startY: wheel.cy + wheel.sro * Math.sin(wheel.wa0o)
+            PathAngleArc { centerX: wheel.cx; centerY: wheel.cy; radiusX: wheel.sro; radiusY: wheel.sro
+                           startAngle: wheel.degOf(wheel.wa0o); sweepAngle: wheel.degOf(wheel.wa1o - wheel.wa0o) }
+            PathLine { x: wheel.cx + wheel.sri * Math.cos(wheel.wa1i); y: wheel.cy + wheel.sri * Math.sin(wheel.wa1i) }
+            PathAngleArc { centerX: wheel.cx; centerY: wheel.cy; radiusX: wheel.sri; radiusY: wheel.sri
+                           startAngle: wheel.degOf(wheel.wa1i); sweepAngle: -wheel.degOf(wheel.wa1i - wheel.wa0i) }
+            PathLine { x: wheel.cx + wheel.sro * Math.cos(wheel.wa0o); y: wheel.cy + wheel.sro * Math.sin(wheel.wa0o) }
         }
-        // internal dividers only: the two radial edges (the "up/down" sides between slices).
-        // Their ends tuck under the rim's arc borders, so the outline is closed but the wedge
-        // adds no border of its own on the outer/inner arcs.
+        // cell-shading only: the two radial divider edges, tucked under the rim
         ShapePath {
             fillColor: "transparent"
             strokeColor: wheel.cellEdge ? wheel.edgeC : "transparent"
             strokeWidth: wheel.cellEdge ? wheel.edgeW : 0
             capStyle: ShapePath.FlatCap
-            startX: wheel.cx + wheel.ro * Math.cos(wheel.a0)
-            startY: wheel.cy + wheel.ro * Math.sin(wheel.a0)
-            PathLine { x: wheel.cx + wheel.ri * Math.cos(wheel.a0); y: wheel.cy + wheel.ri * Math.sin(wheel.a0) }
-            PathMove { x: wheel.cx + wheel.ro * Math.cos(wheel.a1); y: wheel.cy + wheel.ro * Math.sin(wheel.a1) }
-            PathLine { x: wheel.cx + wheel.ri * Math.cos(wheel.a1); y: wheel.cy + wheel.ri * Math.sin(wheel.a1) }
+            startX: wheel.cx + (wheel.outerR - wheel.edgeW / 2) * Math.cos(wheel.wcBase - wheel.wspanRad / 2)
+            startY: wheel.cy + (wheel.outerR - wheel.edgeW / 2) * Math.sin(wheel.wcBase - wheel.wspanRad / 2)
+            PathLine { x: wheel.cx + (wheel.innerR + wheel.edgeW / 2) * Math.cos(wheel.wcBase - wheel.wspanRad / 2)
+                       y: wheel.cy + (wheel.innerR + wheel.edgeW / 2) * Math.sin(wheel.wcBase - wheel.wspanRad / 2) }
+            PathMove { x: wheel.cx + (wheel.outerR - wheel.edgeW / 2) * Math.cos(wheel.wcBase + wheel.wspanRad / 2)
+                       y: wheel.cy + (wheel.outerR - wheel.edgeW / 2) * Math.sin(wheel.wcBase + wheel.wspanRad / 2) }
+            PathLine { x: wheel.cx + (wheel.innerR + wheel.edgeW / 2) * Math.cos(wheel.wcBase + wheel.wspanRad / 2)
+                       y: wheel.cy + (wheel.innerR + wheel.edgeW / 2) * Math.sin(wheel.wcBase + wheel.wspanRad / 2) }
         }
     }
 
-    // ring outline drawn ON TOP of the accent sector, so the outer/hole arcs are one clean,
-    // continuous navy stroke — no seam where the sector's layer meets the band underneath.
+    // ---- radial / half: rim outline (two navy annuli, drawn on top) ----
     Canvas {
         id: rim
         anchors.fill: parent
+        visible: !wheel.isBar && wheel.edgeW > 0.01
         onPaint: {
             var ctx = getContext("2d"); ctx.reset()
-            var c = width / 2, op = wheel.st.wheelOpacity, ew = wheel.edgeW
+            if (wheel.isBar || wheel.edgeW <= 0.01) return
+            var op = wheel.st.wheelOpacity, ew = wheel.edgeW
             function css(col, a) { return "rgba(" + Math.round(col.r * 255) + "," + Math.round(col.g * 255) + "," + Math.round(col.b * 255) + "," + a + ")" }
             ctx.lineWidth = ew; ctx.strokeStyle = css(wheel.edgeC, wheel.edgeA * op)
-            ctx.beginPath(); ctx.arc(c, c, wheel.outerR - ew / 2, 0, 2 * Math.PI); ctx.stroke()
-            ctx.beginPath(); ctx.arc(c, c, wheel.innerR + ew / 2, 0, 2 * Math.PI); ctx.stroke()
+            ctx.beginPath(); ctx.arc(wheel.cx, wheel.cy, wheel.outerR - ew / 2, 0, 2 * Math.PI); ctx.stroke()
+            ctx.beginPath(); ctx.arc(wheel.cx, wheel.cy, wheel.innerR + ew / 2, 0, 2 * Math.PI); ctx.stroke()
         }
         Connections { target: Launcher; function onSettingsChanged() { rim.requestPaint() } }
         Connections { target: wheel; function onBandCChanged() { rim.requestPaint() } }
         Connections { target: wheel; function onEdgeCChanged() { rim.requestPaint() } }
         onWidthChanged: requestPaint()
+        onHeightChanged: requestPaint()
     }
 
-    // centre name pill (hidden when the settings button is up). In actions mode
-    // it sits in the lower half of the hole so the app icon (upper half) is clear.
+    // ---- bar layout: band + inactive slots + sliding accent ----
+    Item {
+        anchors.fill: parent
+        visible: wheel.isBar
+        Rectangle {   // band
+            anchors.centerIn: parent
+            width: wheel.barVertical ? wheel.barThick : wheel.barLen
+            height: wheel.barVertical ? wheel.barLen : wheel.barThick
+            radius: Math.min(Skin.s(18) * wheel.uiScale, wheel.barThick / 2)
+            color: Qt.rgba(wheel.bandC.r, wheel.bandC.g, wheel.bandC.b, wheel.st.wheelOpacity)
+            border.width: wheel.edgeW
+            border.color: Qt.rgba(wheel.edgeC.r, wheel.edgeC.g, wheel.edgeC.b, wheel.edgeA * wheel.st.wheelOpacity)
+        }
+        Repeater {   // inactive slots
+            model: Skin.segBg.a > 0.001 ? wheel.count : 0
+            delegate: Rectangle {
+                required property int index
+                readonly property real along: (wheel.barVertical ? (wheel.height - wheel.barLen) / 2 : (wheel.width - wheel.barLen) / 2)
+                                               + wheel.barPad + index * wheel.barPitch + wheel.hgap + wheel.sinset
+                readonly property real sz: wheel.barPitch - 2 * wheel.hgap - 2 * wheel.sinset
+                readonly property real across: wheel.barThick - 4 * wheel.sinset
+                x: wheel.barVertical ? (wheel.width - across) / 2 : along
+                y: wheel.barVertical ? along : (wheel.height - across) / 2
+                width: wheel.barVertical ? across : sz
+                height: wheel.barVertical ? sz : across
+                radius: wheel.irad
+                color: Skin.segBg
+            }
+        }
+        Rectangle {   // sliding accent
+            property real along: (wheel.barVertical ? (wheel.height - wheel.barLen) / 2 : (wheel.width - wheel.barLen) / 2)
+                                          + wheel.barPad + Math.max(wheel.activeIndex, 0) * wheel.barPitch + wheel.hgap + wheel.sinset
+            Behavior on along { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+            readonly property real sz: wheel.barPitch - 2 * wheel.hgap - 2 * wheel.sinset
+            readonly property real across: wheel.barThick - 4 * wheel.sinset
+            x: wheel.barVertical ? (wheel.width - across) / 2 : along
+            y: wheel.barVertical ? along : (wheel.height - across) / 2
+            width: wheel.barVertical ? across : sz
+            height: wheel.barVertical ? sz : across
+            radius: Math.max(wheel.srad, 1)
+            color: wheel.sectorC
+            border.width: wheel.cellEdge ? wheel.edgeW : 0
+            border.color: wheel.edgeC
+            opacity: wheel.effIndex >= 0 && wheel.count > 0 ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: 110; easing.type: Easing.OutCubic } }
+        }
+    }
+
+    // ---- centre name pill (radial/half in the hole; bar above the strip) ----
     Rectangle {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.verticalCenter: parent.verticalCenter
-        anchors.verticalCenterOffset: Launcher.mode === "actions"
-                                      ? wheel.innerR * 0.46 * wheel.uiScale : 0
+        anchors.horizontalCenterOffset: wheel.isBar ? 0 : wheel.ccOffX
+        anchors.verticalCenterOffset: wheel.isBar
+            ? -(wheel.barThick / 2 + implicitHeight / 2 + Skin.s(10) * wheel.uiScale)
+            : (wheel.ccOffY + (Launcher.mode === "actions" && !wheel.isHalf ? wheel.innerR * 0.46 : 0))
         z: 3
         implicitWidth: label.implicitWidth + Skin.s(24) * wheel.uiScale
         implicitHeight: label.implicitHeight + Skin.s(12) * wheel.uiScale
@@ -238,45 +398,45 @@ Item {
             id: label
             anchors.centerIn: parent
             text: wheel.shownLabel
-            color: "white"
+            color: wheel.labelFg
             font.family: Skin.font; font.pixelSize: Skin.s(14) * wheel.uiScale; font.weight: Font.Medium
             renderType: Text.NativeRendering
         }
     }
 
-    // "actions" mode: the focused window's app icon, in the upper half of the hole
-    // (the action label pill sits in the lower half, so they don't overlap).
+    // "actions" mode: the focused window's app icon, upper half of the hole
     Image {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.verticalCenter: parent.verticalCenter
-        anchors.verticalCenterOffset: -wheel.innerR * 0.24 * wheel.uiScale
+        anchors.horizontalCenterOffset: wheel.ccOffX
+        anchors.verticalCenterOffset: wheel.ccOffY - wheel.innerR * 0.24
         readonly property var fa: Launcher.focusedApp
-        visible: Launcher.mode === "actions" && !wheel.showSettingsBtn && fa !== null
-        width: wheel.innerR * 0.74 * wheel.uiScale; height: width
+        visible: !wheel.isBar && Launcher.mode === "actions" && !wheel.showSettingsBtn && fa !== null
+        width: wheel.innerR * 0.74; height: width
         sourceSize.width: width; sourceSize.height: width
         source: fa ? Launcher.iconSource(fa.icon) : ""
         smooth: true
     }
 
-    // live window thumbnail of the selected window, centred in the hole (settings-gated)
+    // live window thumbnail of the selected window, centred in the hole
     Loader {
         anchors.centerIn: parent
+        anchors.horizontalCenterOffset: wheel.ccOffX
+        anchors.verticalCenterOffset: wheel.ccOffY
         active: wheel.thumbActive
         visible: active && !wheel.showSettingsBtn
         sourceComponent: Item {
             id: thumb
-            // whole preview (frame + caption) fits inside the hole circle: a square of
-            // side avail centred in the hole has its corners at 0.92·innerR < innerR.
             readonly property real avail: wheel.innerR * 1.3
-            readonly property real m: Skin.s(4) * wheel.uiScale     // frame margin
+            readonly property real m: Skin.s(4) * wheel.uiScale
             readonly property real gap: Skin.s(6) * wheel.uiScale
             readonly property real maxW: avail - 2 * m
             readonly property real maxH: avail - cap.implicitHeight - gap - 2 * m
             implicitWidth: avail
             implicitHeight: view.height + 2 * m + gap + cap.implicitHeight
-            Rectangle {   // frame behind the capture
+            Rectangle {
                 anchors.fill: view; anchors.margins: -thumb.m
-                color: Qt.rgba(8/255, 8/255, 10/255, 0.94)
+                color: Qt.rgba(8 / 255, 8 / 255, 10 / 255, 0.94)
                 radius: Skin.s(10) * wheel.uiScale
                 border.width: 1; border.color: Qt.rgba(1, 1, 1, 0.16)
             }
@@ -286,12 +446,11 @@ Item {
                 live: true; paintCursor: false
                 readonly property real a: (sourceSize.width > 0 && sourceSize.height > 0)
                                           ? sourceSize.width / sourceSize.height : 1.6
-                width:  Math.max(1, Math.min(thumb.maxW, thumb.maxH * a))   // fit aspect into hole
+                width:  Math.max(1, Math.min(thumb.maxW, thumb.maxH * a))
                 height: width / a
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.top: parent.top
             }
-            // caption — marquee-scrolls when the label is wider than the hole
             Item {
                 id: cap
                 anchors.top: view.bottom; anchors.topMargin: thumb.gap
@@ -302,7 +461,7 @@ Item {
                 Text {
                     id: capTxt
                     text: wheel.shownLabel
-                    color: "white"; font.family: Skin.font; font.pixelSize: Skin.s(12) * wheel.uiScale
+                    color: wheel.labelFg; font.family: Skin.font; font.pixelSize: Skin.s(12) * wheel.uiScale
                     font.weight: Font.Medium; renderType: Text.NativeRendering
                     x: cap.scrollW > 0 ? cap.off : (cap.width - implicitWidth) / 2
                 }
@@ -318,22 +477,28 @@ Item {
         }
     }
 
-    // app icons (pure visuals; scale with the cursor-angle slice)
+    // ---- app icons (scale with the cursor-angle slice) ----
     Repeater {
         model: wheel.ring
         delegate: Item {
             id: slot
             required property int index
             required property var modelData
-            readonly property real ang: -Math.PI / 2 + index * 2 * Math.PI / wheel.count
+            readonly property real ang: wheel.sliceAng(index)
             width: wheel.iconBox; height: wheel.iconBox
-            x: wheel.width / 2  + wheel.ringR * Math.cos(ang) - width / 2
-            y: wheel.height / 2 + wheel.ringR * Math.sin(ang) - height / 2
+            x: wheel.isBar
+               ? (wheel.barVertical ? (wheel.width - width) / 2
+                                     : ((wheel.width - wheel.barLen) / 2 + wheel.barPad + index * wheel.barPitch + (wheel.barPitch - width) / 2))
+               : (wheel.cx + wheel.ringR * Math.cos(ang) - width / 2)
+            y: wheel.isBar
+               ? (wheel.barVertical ? ((wheel.height - wheel.barLen) / 2 + wheel.barPad + index * wheel.barPitch + (wheel.barPitch - height) / 2)
+                                     : (wheel.height - height) / 2)
+               : (wheel.cy + wheel.ringR * Math.sin(ang) - height / 2)
             z: wheel.effIndex === index ? 2 : 1
 
-            // open windows of this app (reactive on toplevels + selection)
             readonly property int winCount: { void Compositor.windows; return modelData ? Launcher.windowsFor(modelData).length : 0 }
             readonly property int winSelIdx: { void Compositor.windows; void Launcher.winSel; return modelData ? Launcher.selectedWindowIndex(modelData) : -1 }
+            readonly property color slotAccent: (modelData && modelData.accent) ? modelData.accent : wheel.accentC
 
             readonly property bool glyphOnly: !slot.modelData.icon && !!slot.modelData.glyph
             readonly property string iconSrc: Launcher.iconSource(slot.modelData.icon)
@@ -347,42 +512,33 @@ Item {
                 smooth: true
                 scale: wheel.effIndex === slot.index ? 1.14 : 1
                 Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
-                // action icons are symbolic (fixed light fill) — recolour to the chosen
-                // tint, or an adaptive default that stays visible on the band. App icons
-                // (not actions) keep their real colours.
                 layer.enabled: !!slot.modelData.isAction
                 layer.effect: MultiEffect {
                     colorization: 1.0
-                    colorizationColor: slot.modelData.color ? slot.modelData.color
-                                     : (wheel.bandLum > 0.5 ? "#191a2e" : "white")
+                    colorizationColor: slot.modelData.color ? slot.modelData.color : wheel.inkC
                 }
             }
-            // icon couldn't be resolved (app ships no themed icon): fall back to the
-            // item's own glyph, else a generic "app window" — never a broken square.
             Text {
                 anchors.centerIn: parent
                 visible: !slot.glyphOnly && (slot.iconSrc === "" || iconImg.status === Image.Error)
                 text: slot.modelData.glyph || Launcher.gApp
                 font.family: Skin.iconFont; font.pixelSize: wheel.iconBox * 0.46
-                color: wheel.bandLum > 0.5 ? "#191a2e" : "white"; renderType: Text.NativeRendering
+                color: wheel.inkC; renderType: Text.NativeRendering
                 scale: wheel.effIndex === slot.index ? 1.14 : 1
                 Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
             }
-            // action items with no icon: render their font glyph (e.g. Close/Float)
             Text {
                 anchors.centerIn: parent
                 visible: slot.glyphOnly
                 text: slot.modelData.glyph || ""
                 font.family: Skin.iconFont; font.pixelSize: wheel.iconBox * 0.46
-                color: wheel.bandLum > 0.5 ? "#191a2e" : "white"; renderType: Text.NativeRendering
+                color: slot.modelData.color ? slot.modelData.color : wheel.inkC; renderType: Text.NativeRendering
                 scale: wheel.effIndex === slot.index ? 1.14 : 1
                 Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
             }
 
-            // running indicator: one dot per open window; selected one is accent-lit.
-            // Scroll over the app to change the selection (see MouseArea.onWheel).
             Row {
-                visible: slot.winCount > 0
+                visible: wheel.st.showDots && slot.winCount > 0
                 spacing: Skin.s(3) * wheel.uiScale
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.top: iconImg.bottom
@@ -393,8 +549,8 @@ Item {
                         required property int index
                         readonly property bool sel: slot.winCount > 1 && index === slot.winSelIdx
                         width: Skin.s(5) * wheel.uiScale; height: width; radius: width / 2
-                        color: sel ? wheel.accentC
-                             : (wheel.bandLum > 0.5 ? Qt.rgba(0, 0, 0, 0.55) : Qt.rgba(1, 1, 1, 0.85))
+                        color: sel ? slot.slotAccent
+                             : (Skin.dot.a > 0.001 ? Skin.dot : (wheel.bandLum > 0.5 ? Qt.rgba(0, 0, 0, 0.55) : Qt.rgba(1, 1, 1, 0.85)))
                         scale: sel ? 1.2 : 1
                         Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutBack } }
                     }
@@ -403,49 +559,51 @@ Item {
         }
     }
 
-    // single input surface: hover→angle→slice, click→slice action, centre→settings
+    // ---- single input surface ----
     MouseArea {
         anchors.fill: parent
         hoverEnabled: true
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         cursorShape: Qt.PointingHandCursor
         pressAndHoldInterval: 400
-        onWheel: (w) => {                                       // scroll over an app → pick its window
+        onWheel: (w) => {
             if (Launcher.mode === "actions") return
             var s = wheel.sliceAt(w.x, w.y)
             if (s >= 0) Launcher.cycleWindow(wheel.ring[s], w.angleDelta.y > 0 ? -1 : 1)
         }
         onPositionChanged: (m) => wheel.updateHover(m.x, m.y)
         onExited: {
-            if (Launcher.settings.followOutside) return   // backdrop keeps tracking the cursor angle
+            if (Launcher.settings.followOutside) return
             wheel.hoveredIndex = -1; centerTimer.stop(); wheel.showSettingsBtn = false
         }
         onPressAndHold: (m) => {
-            if (Launcher.mode !== "apps") return                // arc is the per-app menu (apps mode)
+            if (Launcher.mode !== "apps") return
             var s = wheel.sliceAt(m.x, m.y)
-            if (s >= 0) Launcher.actionApp = wheel.ring[s]      // long-press → action arc
+            if (s >= 0) Launcher.actionApp = wheel.ring[s]
         }
         onClicked: (m) => {
-            if (Launcher.actionApp !== null) return             // a long-press just opened the arc
+            if (Launcher.actionApp !== null) return
             wheel.handleClick(m.x, m.y, m.button)
         }
     }
 
-    // settings button (appears after 2s hovering the hole) — the RadiAll logo
+    // ---- settings button (radial/half; appears after 2s hovering the hole) ----
     Item {
-        anchors.centerIn: parent
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.verticalCenter: parent.verticalCenter
+        anchors.horizontalCenterOffset: wheel.ccOffX
+        anchors.verticalCenterOffset: wheel.ccOffY
         width: Skin.s(82) * wheel.uiScale; height: width
-        visible: wheel.showSettingsBtn || opacity > 0.01
+        visible: !wheel.isBar && (wheel.showSettingsBtn || opacity > 0.01)
         opacity: wheel.showSettingsBtn ? 1 : 0
         scale: wheel.showSettingsBtn ? 1 : 0.6
         Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
         Behavior on scale   { NumberAnimation { duration: 180; easing.type: Easing.OutBack } }
-        // white disc behind the radish — a soft drop shadow makes it float (the effect)
         Rectangle {
             anchors.centerIn: parent
             width: parent.width; height: width
             radius: width / 2
-            color: "white"
+            color: Skin.settingsBtn
             layer.enabled: true
             layer.effect: MultiEffect {
                 shadowEnabled: true

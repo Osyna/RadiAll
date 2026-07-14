@@ -1,0 +1,26 @@
+{
+  "bg": "#44475a",
+  "accent": "#bd93f9",
+
+  "fg": "#f0f8f8f2",
+  "fgStrong": "#f8f8f2",
+  "fgDim": "#96f8f8f2",
+
+  "red": "#ff5555",
+  "green": "#50fa7b",
+  "yellow": "#f1fa8c",
+
+  "sep": "#26f8f8f2",
+  "panelBg": "#fa282a36",
+  "labelPillBg": "#f5282a36",
+  "labelFg": "#f8f8f2",
+
+  "backdrop": "#191a21",
+  "arcBg": "#f7282a36",
+  "arcStroke": "#33bd93f9",
+  "settingsBtn": "#f8f8f2",
+
+  "glassBg": "#85282a36",
+  "pillBg": "#26f8f8f2",
+  "pillHover": "#40f8f8f2"
+}

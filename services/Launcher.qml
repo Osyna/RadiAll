@@ -11,13 +11,14 @@ Singleton {
     property bool visible: false
     property bool editing: false
     property var apps: defaultApps
+    property string openMonitor: ""   // output the ring is pinned to (snapshot at open)
 
     // Which ring is showing: "apps" (configured apps), "windows" (open windows),
     // or "actions" (the focused window's actions around its icon). Each mode has
     // its own opening shortcut (see settings.shortcuts + shell.qml).
     property string mode: "apps"
 
-    function open(m)       { mode = m || "apps"; actionApp = null; editing = false; visible = true }
+    function open(m)       { mode = m || "apps"; actionApp = null; editing = false; openMonitor = Compositor.activeMonitor; visible = true }
     function close()       { visible = false; editing = false; actionApp = null }
     function toggleMode(m) { (visible && mode === (m || "apps")) ? close() : open(m) }
     function openSettings() { open("apps"); editing = true }   // tray "Settings…" entry
@@ -71,6 +72,9 @@ Singleton {
         var ca = app.customActions || []
         for (var k = 0; k < ca.length; k++)
             out.push({ id: "c:" + k, label: ca[k].label, icon: ca[k].icon, color: ca[k].color, glyph: gKey, kind: "keys", shortcut: ca[k].shortcut, group: "Custom" })
+        var ga = launcher.settings.globalActions || []
+        for (var g = 0; g < ga.length; g++)
+            out.push({ id: "g:" + g, label: ga[g].label, icon: ga[g].icon, color: ga[g].color, glyph: gKey, kind: "keys", shortcut: ga[g].shortcut, group: "Global" })
         return out
     }
 
@@ -211,20 +215,64 @@ Singleton {
         _commitApp(i, a)
     }
 
+    // ---- global (all-apps) key-combo actions (settings.globalActions) ----
+    // Label edits stay in-place (keep field focus); recorder/picker edits change
+    // the reference so the arc + editor refresh. Mirrors the per-app custom actions.
+    function _globals() { return (settings.globalActions || []).map(function (g) { return Object.assign({}, g) }) }
+    function addGlobalAction() { var g = _globals(); g.push({ label: "New action", shortcut: "ctrl+r", icon: "", color: "" }); setSetting("globalActions", g) }
+    function removeGlobalAction(j) { var g = _globals(); g.splice(j, 1); setSetting("globalActions", g) }
+    function setGlobalField(j, key, val) { settings.globalActions[j][key] = val; setTimer.restart() }   // in-place: keeps field focus
+    function _setGlobalRef(j, key, val) { var g = _globals(); g[j][key] = val; setSetting("globalActions", g) }
+    function setGlobalShortcut(j, val) { _setGlobalRef(j, "shortcut", val) }
+    function setGlobalIcon(j, icon)    { _setGlobalRef(j, "icon", icon) }
+    function setGlobalColor(j, color)  { _setGlobalRef(j, "color", color) }
+
+    // ---- per-app accent colour (wedge + dots); "" = theme/global accent ----
+    function setAppAccent(i, color) { var a = _cloneApp(i); a.accent = color; _commitApp(i, a) }
+
+    // ---- save the current look as a new theme file (extends the active theme,
+    // pinning the live bg/accent/section overrides) then switch to it ----
+    FileView { id: themeWriter }
+    function _hex(c) { function h(x) { var s = Math.round(x * 255).toString(16); return s.length < 2 ? "0" + s : s } return "#" + h(c.r) + h(c.g) + h(c.b) }
+    function saveAsTheme(rawName) {
+        var name = (rawName || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
+        if (!name) return
+        var th = {}
+        if (Skin.name && Skin.name !== name) th.extends = Skin.name
+        th.bg = _hex(Skin.bg); th.accent = _hex(Skin.accent)
+        if (settings.segBg) th.segBg = settings.segBg
+        if (settings.border) th.edge = settings.border
+        themeWriter.path = Quickshell.shellDir + "/themes/" + name + ".json"
+        themeWriter.setText(JSON.stringify(th, null, 2))
+        setSetting("theme", name)
+    }
+
     // ---- appearance settings (persisted separately) ----
     readonly property var defaultSettings: ({
         accent: "#e44854",     // radish red (brand) — hover sector (selected-icon background)
         bg: "#c9d8ef",         // donut band colour (independent of accent)
+        segBg: "",             // inactive-section fill (""=none; segmented-pie look when set)
+        border: "",            // ring outline colour override (""=auto/theme edge)
+        layout: "radial",      // "radial" | "bar" | "half"
+        position: "center",    // center | left | right | top | bottom (bar/half anchoring)
         iconSize: 54,
         ringRadius: 150,
+        holeSize: 64,          // centre hole radius (floor for the ring)
+        borderWidth: -1,       // ring outline width px; -1 = auto (hairline / theme edgeWidth)
+        activeRadius: 6,       // hovered-wedge corner radius
+        inactiveRadius: 6,     // inactive-section corner radius
+        edgePadding: 3,        // section inset from the band edges
+        sectionGap: 0,         // gap between sections
         dim: 0.28,
         wheelOpacity: 0.96,
         showLabels: true,
+        showDots: true,        // draw open-window dots under app icons
         thumbnails: false,     // live window thumbnail when scrolling a multi-window app
         followOutside: false,  // sector tracks the cursor across the whole screen, off the ring too
         holdMs: 450,
-        persistBinds: true,    // true: write binds to launcher-binds.conf (survives reload); false: apply live only, no config edits
-        shortcutsEnabled: true, // master on/off for RadiAll-managed ring keybinds (off = open via tray / your own radiall bind)
+        persistBinds: true,    // true: write binds to launcher-binds.conf (survives reload); false: apply live only
+        shortcutsEnabled: true, // master on/off for RadiAll-managed ring keybinds
+        globalActions: [],     // key-combo actions applied to EVERY app's action ring
         // per-mode opening shortcuts (registered with Hyprland at runtime)
         shortcuts: ({ apps: "super+a", windows: "super+w", actions: "super+d" })
     })
@@ -417,7 +465,7 @@ Singleton {
         for (var i = 0; i < tls.length; i++) {
             var t = tls[i]
             var cls = classOf(t)
-            out.push({ name: windowTitle(t) || cls, icon: iconForClass(cls),
+            out.push({ name: cleanTitle(windowTitle(t), cls), icon: iconForClass(cls),
                        wmClass: cls, _win: t, isWindow: true })
         }
         out.sort(function (a, b) {                 // group windows of the same app together
@@ -426,6 +474,35 @@ Singleton {
             return a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1
         })
         return out
+    }
+
+    // Strip a redundant "— App Name" tail from a window title (Rust clean_title
+    // parity): up to 2 passes over common separators, then a 160-char cap.
+    function appNameFor(cls) {
+        var c = (cls || "").toLowerCase()
+        if (!c) return ""
+        var vals = DesktopEntries.applications.values
+        for (var i = 0; i < vals.length; i++) {
+            var e = vals[i]
+            if ((e.startupClass || "").toLowerCase() === c || (e.id || "").toLowerCase() === c) return e.name || ""
+        }
+        var h = DesktopEntries.heuristicLookup(c)
+        return (h && h.name) || ""
+    }
+    function cleanTitle(title, cls) {
+        var s = (title || "").trim()
+        var app = appNameFor(cls)
+        var seps = [" — ", " - ", " – ", " · ", " | ", " :: "]
+        for (var pass = 0; pass < 2 && s && app; pass++) {
+            var cut = false
+            for (var k = 0; k < seps.length; k++) {
+                var tail = seps[k] + app
+                if (s.length > tail.length && s.slice(-tail.length) === tail) { s = s.slice(0, s.length - tail.length).trim(); cut = true; break }
+            }
+            if (!cut) break
+        }
+        if (s.length > 160) s = s.slice(0, 159) + "…"
+        return s || cls || ""
     }
 
     // "actions" mode: the focused window's app, and its actions as ring items.
@@ -461,14 +538,19 @@ Singleton {
         return out
     }
 
-    // Unified activation from the wheel: run an action in "actions" mode,
-    // otherwise focus/launch the app or window.
+    // Deferred activation: close the overlay FIRST, then dispatch after a short
+    // delay so the compositor re-focuses the previously-active window before we
+    // send focuswindow / keys — our overlay's focus grab would otherwise stomp it.
+    property var _pending: null
+    Timer { id: activateTimer; interval: 120; onTriggered: { var p = launcher._pending; launcher._pending = null; if (p) p() } }
     function activateItem(item, button) {
         if (!item) { close(); return }
-        if (item.isAction) { runAction(item._app, item); return }   // runAction closes
+        var right = (button === Qt.RightButton)
         close()
-        if (button === Qt.RightButton && !item.isWindow) launch(item)
-        else activate(item)
+        if (item.isAction) _pending = function () { launcher.runAction(item._app, item) }
+        else if (right && !item.isWindow) _pending = function () { launcher.launch(item) }
+        else _pending = function () { launcher.activate(item) }
+        activateTimer.restart()
     }
     // Resolve an icon name/path to an Image source that WILL load. Absolute path →
     // file://. Otherwise resolve against the icon theme in "check" mode, so a missing

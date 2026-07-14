@@ -45,6 +45,9 @@ Singleton {
     readonly property var activeWindow: isHyprland ? Hyprland.activeToplevel
                                                    : ToplevelManager.activeToplevel
 
+    // focused monitor name (Hyprland); "" = unknown → ring shows on every output.
+    readonly property string activeMonitor: (isHyprland && Hyprland.focusedMonitor) ? Hyprland.focusedMonitor.name : ""
+
     // ---- window property accessors (uniform across backends) ----
     function appId(w) {
         if (!w) return ""

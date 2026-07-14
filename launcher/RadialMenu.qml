@@ -4,7 +4,9 @@ import QtQuick
 import "../services"
 
 // Full-screen overlay radial app launcher. Toggled by SUPER+A. Press-and-hold on
-// an empty zone opens the settings (with a live wheel preview beside it).
+// an empty zone opens the settings (with a live wheel preview beside it). Shown
+// only on the output the ring was opened on; the wheel anchors per layout/position
+// (radial centred/edged, half ring flush to an edge, bar as a dock strip).
 PanelWindow {
     id: root
     property var modelData
@@ -13,19 +15,41 @@ PanelWindow {
     exclusionMode: ExclusionMode.Ignore   // span the full screen, under the bar too
     WlrLayershell.layer: WlrLayershell.Overlay
     WlrLayershell.namespace: "quickshell-launcher"
-    WlrLayershell.keyboardFocus: Launcher.visible ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+
+    // Only the output the ring was opened on shows it (mirrors the standalone's
+    // active-output behaviour). Unknown monitor (non-Hyprland) → every output.
+    readonly property bool onActiveOutput: Launcher.openMonitor === ""
+                                           || (modelData && modelData.name === Launcher.openMonitor)
+
+    WlrLayershell.keyboardFocus: (Launcher.visible && onActiveOutput) ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
     anchors { top: true; bottom: true; left: true; right: true }
-    visible: Launcher.visible || wheelWrap.opacity > 0.01
+    visible: (Launcher.visible || wheelWrap.opacity > 0.01) && onActiveOutput
+
+    // ---- wheel placement (centre point on screen) per layout + position ----
+    readonly property real ww: wheel.implicitWidth
+    readonly property real wh: wheel.implicitHeight
+    readonly property string lay: Launcher.settings.layout || "radial"
+    readonly property string ppos: Launcher.settings.position || "center"
+    readonly property int edgeMargin: Skin.s(40)
+    readonly property real wcx: {
+        if (lay === "half") return ppos === "left" ? 0 : (ppos === "right" ? width : width / 2)
+        if (ppos === "left")  return edgeMargin + ww / 2
+        if (ppos === "right") return width - (edgeMargin + ww / 2)
+        return width / 2
+    }
+    readonly property real wcy: {
+        if (lay === "half") return ppos === "top" ? 0 : ((ppos === "left" || ppos === "right") ? height / 2 : height)
+        if (ppos === "top")    return edgeMargin + wh / 2
+        if (ppos === "bottom") return height - (edgeMargin + wh / 2)
+        return height / 2
+    }
 
     // background: click outside the wheel = dismiss (or commit while editing).
     // Settings are opened from the centre button (hover the hole ~2s) — see Wheel.qml.
     MouseArea {
         id: bg
         anchors.fill: parent
-        // "Follow outside" mode: track the cursor over the whole screen so the accent
-        // sector points at it even off the ring, and a click activates the aimed slice.
-        // (Dismiss with Esc or by clicking the centre hole.) Otherwise a click dismisses.
         readonly property bool follow: Launcher.settings.followOutside && Launcher.visible && !Launcher.editing
         hoverEnabled: follow
         onPositionChanged: (m) => {
@@ -46,35 +70,31 @@ PanelWindow {
     Item {
         anchors.fill: parent
         focus: Launcher.visible
-        // Esc: leave settings (back to wheel) while editing, else dismiss the launcher.
-        // The shortcut recorder consumes Esc itself while capturing, so it won't bubble here.
         Keys.onEscapePressed: Launcher.editing ? Launcher.commit() : Launcher.close()
     }
 
     // dim backdrop
     Rectangle {
         anchors.fill: parent
-        color: "black"
+        color: Skin.backdrop
         opacity: Launcher.visible ? Launcher.settings.dim : 0
         Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
     }
 
-    // ---- settings: live preview + editor (press-and-hold to open) ----
+    // ---- settings: live preview + editor (centred; press-and-hold to open) ----
     Loader {
         anchors.centerIn: parent
         active: Launcher.editing
         visible: active
         sourceComponent: Row {
             spacing: Skin.s(36)
-
-            // live preview pane
             Rectangle {
                 width: Skin.s(330); height: Skin.s(560)
                 radius: Skin.s(20)
                 color: Skin.panelBg
                 border.width: 1; border.color: Skin.tint(0.10)
                 clip: true
-                MouseArea { anchors.fill: parent }   // swallow stray clicks
+                MouseArea { anchors.fill: parent }
                 Text {
                     x: Skin.s(18); y: Skin.s(16)
                     text: "Preview"; color: Skin.fgDim
@@ -83,24 +103,23 @@ PanelWindow {
                 Wheel {
                     anchors.centerIn: parent
                     uiScale: 0.5
-                    enabled: false   // preview: non-interactive (disables child MouseAreas)
-                    // highlight a running app so the live thumbnail shows in the preview too
+                    enabled: false
                     readonly property int sample: Launcher.firstRunningIndex()
                     forceSlice: sample
                     forceLabel: Launcher.ringModel.length ? Launcher.ringModel[sample].name : ""
                 }
             }
-
             LauncherEditor {}
         }
     }
 
-    // ---- main clickable wheel ----
+    // ---- main clickable wheel (anchored per layout/position) ----
     Item {
         id: wheelWrap
-        anchors.centerIn: parent
+        x: root.wcx - width / 2
+        y: root.wcy - height / 2
         width: wheel.implicitWidth; height: wheel.implicitHeight
-        visible: !Launcher.editing          // fully hidden while editing (no phantom icon clicks)
+        visible: !Launcher.editing
         opacity: Launcher.visible ? 1 : 0
         scale: Launcher.visible ? 1 : 0.9
         Behavior on opacity { NumberAnimation { duration: 170; easing.type: Easing.OutCubic } }
@@ -109,6 +128,6 @@ PanelWindow {
         Wheel { id: wheel; anchors.centerIn: parent }
     }
 
-    // per-app action arc (long-press an icon) — on top of the wheel
-    ActionArc { anchors.centerIn: parent }
+    // per-app action arc (long-press an icon) — tracks the wheel centre
+    ActionArc { anchors.centerIn: wheelWrap }
 }

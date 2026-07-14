@@ -46,8 +46,8 @@ Item {
             ctx.arc(c, c, arc.bandOuter, Math.PI, 2 * Math.PI)
             ctx.arc(c, c, arc.bandInner, 2 * Math.PI, Math.PI, true)
             ctx.closePath()
-            ctx.fillStyle = "rgba(20,20,24,0.97)"; ctx.fill()
-            ctx.lineWidth = 1; ctx.strokeStyle = "rgba(255,255,255,0.08)"; ctx.stroke()
+            ctx.fillStyle = Skin.arcBg; ctx.fill()
+            ctx.lineWidth = 1; ctx.strokeStyle = Skin.arcStroke; ctx.stroke()
         }
         onWidthChanged: requestPaint()
     }
@@ -69,7 +69,7 @@ Item {
 
             Rectangle {
                 anchors.fill: parent; radius: width / 2
-                color: ma.containsMouse ? Skin.accent : Skin.tint(0.10)
+                color: ma.containsMouse ? ((Launcher.actionApp && Launcher.actionApp.accent) ? Launcher.actionApp.accent : (Skin.arcBtnHover.a > 0 ? Skin.arcBtnHover : Skin.accent)) : Skin.arcBtn
                 Behavior on color { ColorAnimation { duration: 120 } }
                 scale: ma.containsMouse ? 1.12 : 1
                 Behavior on scale { NumberAnimation { duration: 130; easing.type: Easing.OutBack } }
