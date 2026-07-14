@@ -25,9 +25,9 @@ dirs = "6"
 log = "0.4"
 env_logger = { version = "0.11", default-features = false, features = ["auto-color"] }
 
-# Linux/Unix: Wayland + X11 winit backends, freedesktop integration, and the
+# Linux: Wayland + X11 winit backends, freedesktop integration, and the
 # Wayland/X11/DBus clients the compositor + shortcut adapters are built on.
-[target.'cfg(unix)'.dependencies]
+[target.'cfg(target_os = "linux")'.dependencies]
 slint = { version = "1.17", default-features = false, features = [
     "backend-winit-wayland",
     "backend-winit-x11",
@@ -40,10 +40,14 @@ wayland-protocols-plasma = { version = "0.3", features = ["client"] }
 x11rb = "0.13"
 zbus = { version = "5", default-features = false, features = ["blocking-api", "async-io"] }
 
-# Windows: winit/Win32 backend + raw Win32 for window listing/control, global
-# hotkeys, Start-Menu app scanning, and icon extraction.
-[target.'cfg(windows)'.dependencies]
+# Windows + macOS: the plain winit backend (Win32 / Cocoa). Split from Linux so
+# a non-Linux unix (macOS) never pulls in the Wayland/X11 stack.
+[target.'cfg(not(target_os = "linux"))'.dependencies]
 slint = { version = "1.17", default-features = false, features = ["backend-winit"] }
+
+# Windows: raw Win32 for window listing/control, global hotkeys, Start-Menu app
+# scanning, and icon extraction.
+[target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [
     "Win32_Foundation",
     "Win32_UI_WindowsAndMessaging",

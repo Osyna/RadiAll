@@ -13,9 +13,9 @@ mod icons;
 mod ipc;
 mod ring;
 mod shortcuts;
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 mod shortcuts_portal;
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 mod shortcuts_x11;
 #[cfg(windows)]
 mod shortcuts_win;
@@ -131,6 +131,7 @@ fn run_daemon() -> Result<(), Box<dyn std::error::Error>> {
                 compositor::CompositorEvent::Active(a) => {
                     with_ui(move |ui| ui.on_active_changed(a))
                 }
+                #[cfg(target_os = "linux")]
                 compositor::CompositorEvent::ConfigReloaded => with_ui(|ui| {
                     let core = ui.core.borrow();
                     if let Some(sc) = &core.shortcuts {

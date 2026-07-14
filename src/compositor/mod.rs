@@ -1,6 +1,6 @@
 //! Compositor adapter. RadiAll is Hyprland-first but runs on any Linux
-//! session; everything compositor-specific lives behind this trait so the
-//! rest of the app is generic (and Win32 / macOS adapters can slot in later).
+//! session, on Windows (Win32), and on macOS; everything compositor-specific
+//! lives behind this trait so the rest of the app stays generic.
 //!
 //! Linux coverage:
 //! - Hyprland: IPC socket (full control incl. float/send-keys)
@@ -10,6 +10,9 @@
 //! - any X11 WM: EWMH (KDE-X11, XFCE, Cinnamon, MATE, i3, GNOME-X11, ...)
 //! - GNOME Wayland: no window-listing protocol exists; the apps ring works
 //!   fully, windows/actions rings degrade
+//! - Windows: Win32 — EnumWindows + SetForegroundWindow/PostMessage
+//! - macOS: no window adapter yet; apps ring works fully, windows/actions
+//!   rings degrade (a CGWindowList/AX adapter can slot in behind this trait)
 //!
 //! Capabilities mirror the old Compositor.qml singleton:
 //!   - window listing / focus / close / fullscreen -> per-adapter
@@ -17,13 +20,13 @@
 //!   - global keybinds live in shortcuts.rs providers (hyprctl / XDG portal /
 //!     X11 grabs); users can always bind `radiall --apps` manually instead
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 mod hyprland;
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 mod plasma;
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 mod wlr;
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 mod x11;
 #[cfg(windows)]
 mod windows;
@@ -53,7 +56,7 @@ pub enum CompositorEvent {
     /// The compositor reloaded its config (Hyprland): keyword-applied binds
     /// and window rules were wiped and have been / must be re-applied.
     /// (constructed only by the Hyprland adapter)
-    #[cfg_attr(windows, allow(dead_code))]
+    #[cfg(target_os = "linux")]
     ConfigReloaded,
 }
 
@@ -103,8 +106,9 @@ pub trait Compositor: Send {
     fn send_keys(&mut self, _id: &WindowId, _mods: &str, _key: &str) {}
 }
 
-/// No-op adapter for environments with no window-listing protocol (e.g. GNOME
-/// Wayland). The apps ring still works fully; windows/actions rings degrade.
+/// Fallback adapter for environments with no window-listing protocol — GNOME
+/// Wayland, and macOS until a CGWindowList/AX adapter lands. The apps ring
+/// works fully; the windows/actions rings stay empty.
 struct NullCompositor;
 
 impl Compositor for NullCompositor {
@@ -117,7 +121,13 @@ impl Compositor for NullCompositor {
     fn active_window(&mut self) -> Option<WindowInfo> {
         None
     }
-    fn watch(&mut self, _tx: Sender<CompositorEvent>) {}
+    fn watch(&mut self, tx: Sender<CompositorEvent>) {
+        // No adapter here: report an empty, unfocused window set once so the
+        // windows ring initializes cleanly on apps-only targets (macOS, GNOME
+        // Wayland) instead of leaving stale state.
+        let _ = tx.send(CompositorEvent::Windows(Vec::new()));
+        let _ = tx.send(CompositorEvent::Active(None));
+    }
     fn activate(&mut self, _id: &WindowId) {}
     fn close_window(&mut self, _id: &WindowId) {}
     fn fullscreen(&mut self, _id: &WindowId) {}
@@ -138,7 +148,7 @@ pub fn detect() -> Box<dyn Compositor> {
             Err(e) => log::warn!("win32 window adapter failed ({e})"),
         }
     }
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     {
         let wayland = std::env::var_os("WAYLAND_DISPLAY").is_some();
         let x11 = std::env::var_os("DISPLAY").is_some();

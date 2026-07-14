@@ -109,7 +109,7 @@ pub fn write_binds_file(settings: &Settings) {
     }
 }
 
-#[cfg_attr(windows, allow(dead_code))] // Hyprland-only; unused on Windows
+#[cfg(target_os = "linux")]
 pub fn clear_binds_file() {
     std::fs::create_dir_all(hypr_dir()).ok();
     std::fs::write(
@@ -165,7 +165,7 @@ fn bind_live(mode: &str, combo: &Combo) {
 /// Full reconcile, port of applyShortcuts(): no-op off Hyprland;
 /// disabled -> unbind everything + stub file; enabled -> file per persistBinds
 /// + live binds either way.
-#[cfg_attr(windows, allow(dead_code))] // Hyprland-only; unused on Windows
+#[cfg(target_os = "linux")]
 pub fn apply_shortcuts(settings: &Settings, can_manage: bool) {
     if !can_manage {
         return;
@@ -268,7 +268,7 @@ pub fn detect_provider() -> ProviderKind {
     {
         ProviderKind::Win
     }
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     {
         let set = |k: &str| std::env::var(k).is_ok_and(|v| !v.is_empty());
         if set("HYPRLAND_INSTANCE_SIGNATURE") {
@@ -285,16 +285,20 @@ pub fn detect_provider() -> ProviderKind {
             ProviderKind::None
         }
     }
+    #[cfg(not(any(windows, target_os = "linux")))]
+    {
+        ProviderKind::None
+    }
 }
 
 /// The running provider. Hyprctl keeps no state (binds live in the
 /// compositor); portal/X11 hold a handle to their background thread.
 enum Provider {
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     Hyprctl,
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     Portal(crate::shortcuts_portal::PortalProvider),
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     X11(crate::shortcuts_x11::X11Provider),
     #[cfg(windows)]
     Win(crate::shortcuts_win::WinProvider),
@@ -319,7 +323,7 @@ impl Shortcuts {
         fire: impl Fn(&'static str) + Send + Sync + 'static,
     ) -> Shortcuts {
         let fire: FireFn = Arc::new(fire);
-        #[cfg(unix)]
+        #[cfg(target_os = "linux")]
         let (kind, provider) = match kind {
             ProviderKind::Hyprctl => {
                 apply_shortcuts(settings, true);
@@ -345,6 +349,11 @@ impl Shortcuts {
             // Unix-only kinds can't be selected on Windows; degrade cleanly.
             _ => (ProviderKind::None, Provider::Inert),
         };
+        #[cfg(not(any(windows, target_os = "linux")))]
+        let (kind, provider) = {
+            let _ = (kind, settings, fire); // no in-process hotkey provider here
+            (ProviderKind::None, Provider::Inert)
+        };
         let s = Shortcuts { kind, provider };
         log::info!("shortcuts: provider {}", s.backend_name());
         s
@@ -353,12 +362,15 @@ impl Shortcuts {
     /// Re-sync bindings after a settings change (combos edited, master
     /// toggle flipped).
     pub fn apply(&self, settings: &Settings) {
+        // off Linux/Windows the only provider is Inert; settings goes unused
+        #[cfg(not(any(target_os = "linux", windows)))]
+        let _ = settings;
         match &self.provider {
-            #[cfg(unix)]
+            #[cfg(target_os = "linux")]
             Provider::Hyprctl => apply_shortcuts(settings, true),
-            #[cfg(unix)]
+            #[cfg(target_os = "linux")]
             Provider::Portal(p) => p.apply(settings),
-            #[cfg(unix)]
+            #[cfg(target_os = "linux")]
             Provider::X11(p) => p.apply(settings),
             #[cfg(windows)]
             Provider::Win(p) => p.apply(settings),
