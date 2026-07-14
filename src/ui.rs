@@ -78,6 +78,30 @@ pub fn parse_layout(layout: &str, pos: &str) -> (LayoutKind, LayoutPos) {
     (kind, pos)
 }
 
+/// SVG path (viewbox 0..2*ro, centre (c,c)) for a full annulus; even-odd fill
+/// punches the inner circle out of the outer one.
+fn annulus_path(c: f32, ro: f32, ri: f32) -> String {
+    format!(
+        "M {lo} {c} A {ro} {ro} 0 1 1 {ho} {c} A {ro} {ro} 0 1 1 {lo} {c} Z \
+         M {li} {c} A {ri} {ri} 0 1 1 {hi} {c} A {ri} {ri} 0 1 1 {li} {c} Z",
+        lo = c - ro, ho = c + ro, li = c - ri, hi = c + ri, c = c, ro = ro, ri = ri
+    )
+}
+
+/// SVG path for a half annulus whose opening faces `hb` (radians): the outer arc
+/// bulges toward the opening, the inner arc returns, flat edge on the far side.
+fn half_annulus_path(c: f32, ro: f32, ri: f32, hb: f32) -> String {
+    let (a0, a1) = (hb - std::f32::consts::FRAC_PI_2, hb + std::f32::consts::FRAC_PI_2);
+    format!(
+        "M {ox0} {oy0} A {ro} {ro} 0 0 1 {ox1} {oy1} L {ix1} {iy1} A {ri} {ri} 0 0 0 {ix0} {iy0} Z",
+        ox0 = c + ro * a0.cos(), oy0 = c + ro * a0.sin(),
+        ox1 = c + ro * a1.cos(), oy1 = c + ro * a1.sin(),
+        ix1 = c + ri * a1.cos(), iy1 = c + ri * a1.sin(),
+        ix0 = c + ri * a0.cos(), iy0 = c + ri * a0.sin(),
+        ro = ro, ri = ri
+    )
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Geometry {
     pub kind: LayoutKind,
@@ -1273,9 +1297,93 @@ impl Ui {
         }
         drop(core);
 
+        // ---- arc layout: shape follows the wheel (radial ring / half ring / bar) ----
+        let geo = *self.geo.borrow();
+        let n = templates.len();
+        let nf = n as f32;
+        let (s10, s12, s4, s28) = {
+            let skin = self.skin.borrow();
+            (skin.s(10.0), skin.s(12.0), skin.s(4.0), skin.s(28.0))
+        };
+        let c = geo.arc_band_outer;          // arc-local centre
+        let (ro, ri, ar, btn) = (geo.arc_band_outer, geo.arc_band_inner, geo.arc_radius, geo.arc_btn_r);
+        let gap = s10;
+        let pitch = 2.0 * btn + s10;
+        let bar_offset = geo.icon_box / 2.0 + gap + btn;
+        let bar_thick = 2.0 * btn + s12;
+        let bar_len = nf * pitch + s4;
+        let label_h = s28;
+        let arc_mode: i32;
+        let positions: Vec<(f32, f32)>;
+        let band_path: String;
+        let (mut bar_cx, mut bar_cy, mut bar_w, mut bar_h) = (c, c, 0.0f32, 0.0f32);
+        let label: (f32, f32);
+        match geo.kind {
+            LayoutKind::Bar => {
+                arc_mode = 1;
+                let vert = geo.bar_vertical();
+                // horizontal: bottom→up / top→down; vertical: left→right / right→left
+                let dir = match geo.pos {
+                    LayoutPos::Top | LayoutPos::Left => 1.0,
+                    _ => -1.0,
+                };
+                let (bcx, bcy) = if vert { (c + dir * bar_offset, c) } else { (c, c + dir * bar_offset) };
+                bar_cx = bcx;
+                bar_cy = bcy;
+                bar_w = if vert { bar_thick } else { bar_len };
+                bar_h = if vert { bar_len } else { bar_thick };
+                positions = (0..n)
+                    .map(|i| {
+                        let t = (i as f32 - (nf - 1.0) / 2.0) * pitch;
+                        if vert { (bcx, bcy + t) } else { (bcx + t, bcy) }
+                    })
+                    .collect();
+                band_path = String::new();
+                label = if vert {
+                    (bcx, bcy - bar_len / 2.0 - gap - label_h / 2.0)
+                } else if geo.pos == LayoutPos::Top {
+                    (bcx, bcy + bar_thick / 2.0 + gap + label_h / 2.0)
+                } else {
+                    (bcx, bcy - bar_thick / 2.0 - gap - label_h / 2.0)
+                };
+            }
+            LayoutKind::Half => {
+                arc_mode = 2;
+                let hb = match geo.pos {
+                    LayoutPos::Top => PI / 2.0,
+                    LayoutPos::Left => 0.0,
+                    LayoutPos::Right => PI,
+                    _ => -PI / 2.0,
+                };
+                let span = (30.0 * nf).min(150.0) * PI / 180.0;
+                positions = (0..n)
+                    .map(|i| {
+                        let ang = if n <= 1 { hb } else { hb - span / 2.0 + i as f32 * span / (nf - 1.0) };
+                        (c + ar * ang.cos(), c + ar * ang.sin())
+                    })
+                    .collect();
+                band_path = half_annulus_path(c, ro, ri, hb);
+                let lr = ar + btn + gap + label_h / 2.0;
+                label = (c + lr * hb.cos(), c + lr * hb.sin());
+            }
+            LayoutKind::Radial => {
+                arc_mode = 0;
+                positions = (0..n)
+                    .map(|i| {
+                        let ang = -PI / 2.0 + i as f32 * 2.0 * PI / nf;
+                        (c + ar * ang.cos(), c + ar * ang.sin())
+                    })
+                    .collect();
+                band_path = annulus_path(c, ro, ri);
+                let lr = ar + btn + gap + label_h / 2.0;
+                label = (c, c - lr);
+            }
+        }
+
         let items: Vec<ArcItem> = templates
             .iter()
-            .map(|t| {
+            .enumerate()
+            .map(|(i, t)| {
                 let (icon, has_icon) = Self::load_image(&t.icon, 48);
                 let tint = Rgba::parse(&t.color).unwrap_or(Rgba::rgb(255, 255, 255));
                 ArcItem {
@@ -1284,15 +1392,16 @@ impl Ui {
                     has_icon,
                     glyph: t.glyph.clone().into(),
                     tint: to_color(tint),
+                    bx: positions[i].0,
+                    by: positions[i].1,
                 }
             })
             .collect();
         let Some(win) = self.ring_handle() else {
             return;
         };
-        // anchor: radial arcs share the wheel center; bar/half arcs pop
-        // around the pressed item itself
-        let geo = *self.geo.borrow();
+        // anchor: radial arcs share the wheel centre; bar/half arcs pop around
+        // the pressed item itself
         let size = win.window().size();
         let sf = win.window().scale_factor();
         let (w, h) = (size.width as f32 / sf, size.height as f32 / sf);
@@ -1306,6 +1415,14 @@ impl Ui {
         };
         win.set_arc_cx(cx);
         win.set_arc_cy(cy);
+        win.set_arc_mode(arc_mode);
+        win.set_arc_band_path(band_path.into());
+        win.set_arc_bar_cx(bar_cx);
+        win.set_arc_bar_cy(bar_cy);
+        win.set_arc_bar_w(bar_w);
+        win.set_arc_bar_h(bar_h);
+        win.set_arc_label_x(label.0);
+        win.set_arc_label_y(label.1);
         win.set_arc_items(ModelRc::new(VecModel::from(items)));
         win.set_arc_label(entry.name.clone().into());
         win.set_arc_open(true);

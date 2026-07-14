@@ -19,6 +19,8 @@ export struct ArcItem {
     has-icon: bool,
     glyph: string,
     tint: color,          // button glyph/icon color; default white
+    bx: length,           // button centre in arc-local px (Rust-computed, apop=1)
+    by: length,
 }
 
 export struct AppRow {

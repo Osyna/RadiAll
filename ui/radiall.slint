@@ -61,6 +61,14 @@ export component RingWindow inherits Window {
     in property <length> arc-btn-r;
     in property <length> arc-band-inner;
     in property <length> arc-band-outer;
+    in property <int> arc-mode;             // 0 radial, 1 bar, 2 half
+    in property <string> arc-band-path;     // ring band SVG (viewbox 0..2*band-outer)
+    in property <length> arc-bar-cx;        // bar strip centre / dims (arc-local)
+    in property <length> arc-bar-cy;
+    in property <length> arc-bar-w;
+    in property <length> arc-bar-h;
+    in property <length> arc-label-x;       // label pill centre (arc-local)
+    in property <length> arc-label-y;
 
     // raw input -> Rust state machine (coords are window-local px)
     callback pointer-moved(length, length);
@@ -174,6 +182,14 @@ export component RingWindow inherits Window {
         btn-r: root.arc-btn-r;
         band-inner: root.arc-band-inner;
         band-outer: root.arc-band-outer;
+        mode: root.arc-mode;
+        band-path: root.arc-band-path;
+        bar-cx: root.arc-bar-cx;
+        bar-cy: root.arc-bar-cy;
+        bar-w: root.arc-bar-w;
+        bar-h: root.arc-bar-h;
+        label-x: root.arc-label-x;
+        label-y: root.arc-label-y;
         action-clicked(i) => {
             root.arc-clicked(i);
         }

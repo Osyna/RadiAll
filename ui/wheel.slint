@@ -497,18 +497,27 @@ export component Wheel {
 }
 
 export component ActionArc {
-    // Geometry from Rust (same center as the wheel).
-    in property <length> arc-radius;     // button-center radius
+    // Geometry from Rust (same centre as the wheel). Button + label centres are
+    // pre-computed in Rust in arc-local px (at apop=1); Slint only scales them
+    // about the centre for the pop animation. The band is a Rust-built SVG path
+    // (radial full annulus / half annulus) or a rounded strip (bar).
+    in property <length> arc-radius;
     in property <length> btn-r;
     in property <length> band-inner;
     in property <length> band-outer;
+    in property <int> mode;              // 0 radial, 1 bar, 2 half
+    in property <string> band-path;      // ring band SVG (viewbox 0..2*band-outer)
+    in property <length> bar-cx;
+    in property <length> bar-cy;
+    in property <length> bar-w;
+    in property <length> bar-h;
+    in property <length> label-x;
+    in property <length> label-y;
 
     in property <[ArcItem]> items;
     in property <string> app-label;      // pill text fallback (hovered label wins)
     in property <bool> open;
 
-    // Buttons are discrete circles -> they own their TouchAreas (they sit on
-    // top of the fullscreen input layer in the window stacking order).
     callback action-clicked(int);
 
     width: 2 * root.band-outer;
@@ -517,14 +526,10 @@ export component ActionArc {
 
     private property <int> n: root.items.length;
     private property <int> hov: -1;                  // hovered button index
-    // pop-style open scale, applied to every drawn length (about the center)
+    private property <length> c: root.band-outer;    // arc-local centre
+    // pop-style open scale, applied about the centre to every drawn length
     private property <float> apop: root.open ? 1.0 : 0.9;
     animate apop { duration: 180ms; easing: cubic-bezier(0.34, 1.56, 0.64, 1); }
-    // buttons spread symmetrically about straight-up, 30deg pitch, 150deg cap
-    private property <float> span: Math.min(150, 30 * Math.max(1, root.n));
-    private property <float> cxf: root.band-outer / 1px;
-    private property <float> fbo: root.band-outer / 1px * root.apop;
-    private property <float> fbi: root.band-inner / 1px * root.apop;
 
     content := Rectangle {
         width: 100%;
@@ -532,34 +537,45 @@ export component ActionArc {
         opacity: root.open ? 1 : 0;
         animate opacity { duration: 150ms; easing: cubic-bezier(0.33, 1, 0.68, 1); }
 
-        // top half-annulus band (canvas angles pi -> 2pi, flat bottom edge)
-        Path {
-            width: 100%;
-            height: 100%;
-            viewbox-width: self.width / 1px;
-            viewbox-height: self.height / 1px;
+        // ring band (radial full annulus / half annulus) — viewbox scaled by apop
+        if root.mode != 1: Path {
+            commands: root.band-path;
+            fill-rule: evenodd;
             fill: Skin.arc-bg;
             stroke: Skin.arc-stroke;
             stroke-width: 1px;
-            MoveTo { x: root.cxf - root.fbo; y: root.cxf; }
-            ArcTo { x: root.cxf + root.fbo; y: root.cxf; radius-x: root.fbo; radius-y: root.fbo; sweep: true; }
-            LineTo { x: root.cxf + root.fbi; y: root.cxf; }
-            ArcTo { x: root.cxf - root.fbi; y: root.cxf; radius-x: root.fbi; radius-y: root.fbi; sweep: false; }
-            Close { }
+            viewbox-width: 2 * root.band-outer / 1px;
+            viewbox-height: 2 * root.band-outer / 1px;
+            width: 2 * root.band-outer * root.apop;
+            height: self.width;
+            x: root.c - self.width / 2;
+            y: root.c - self.height / 2;
         }
 
-        // action buttons on the arc
+        // bar band (rounded strip) — scaled about the centre by apop
+        if root.mode == 1: Rectangle {
+            width: root.bar-w * root.apop;
+            height: root.bar-h * root.apop;
+            x: root.c + (root.bar-cx - root.c) * root.apop - self.width / 2;
+            y: root.c + (root.bar-cy - root.c) * root.apop - self.height / 2;
+            border-radius: min(self.width, self.height) / 2;
+            background: Skin.arc-bg;
+            border-width: 1px;
+            border-color: Skin.arc-stroke;
+        }
+
+        // action buttons at their Rust-computed centres (scaled about the centre)
         for item[i] in root.items: btn := Rectangle {
             private property <float> bs: bta.has-hover && root.open ? 1.12 : 1.0;
             animate bs { duration: 130ms; easing: cubic-bezier(0.34, 1.56, 0.64, 1); }
-            private property <angle> ang: (180 + (180 - root.span) / 2
-                + (root.n <= 1 ? root.span / 2 : i * root.span / (root.n - 1))) * 1deg;
             private property <length> dia: 2 * root.btn-r * root.apop * self.bs;
+            private property <length> ccx: root.c + (item.bx - root.c) * root.apop;
+            private property <length> ccy: root.c + (item.by - root.c) * root.apop;
 
             width: self.dia;
             height: self.dia;
-            x: root.band-outer + root.arc-radius * root.apop * Math.cos(self.ang) - self.dia / 2;
-            y: root.band-outer + root.arc-radius * root.apop * Math.sin(self.ang) - self.dia / 2;
+            x: self.ccx - self.dia / 2;
+            y: self.ccy - self.dia / 2;
             border-radius: self.dia / 2;
             background: bta.has-hover && root.open ? Skin.arc-btn-hover : Skin.arc-btn;
             animate background { duration: 120ms; }
@@ -599,16 +615,14 @@ export component ActionArc {
             }
         }
 
-        // label pill above the arc: hovered action's label, else the app name
+        // label pill: hovered action's label, else the app name
         Rectangle {
             width: atxt.preferred-width + Skin.s(22) * root.apop;
             height: atxt.preferred-height + Skin.s(10) * root.apop;
             border-radius: Skin.s(9) * root.apop;
             background: Skin.label-pill-bg;
-            x: root.band-outer - self.width / 2;
-            y: root.band-outer
-                - (root.arc-radius + root.btn-r + Skin.s(8)) * root.apop
-                - self.height;
+            x: root.c + (root.label-x - root.c) * root.apop - self.width / 2;
+            y: root.c + (root.label-y - root.c) * root.apop - self.height / 2;
             atxt := Text {
                 text: root.hov >= 0 && root.hov < root.n ? root.items[root.hov].label : root.app-label;
                 color: Skin.label-fg;
