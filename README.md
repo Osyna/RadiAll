@@ -9,8 +9,8 @@
 A radial app launcher, window switcher, and per-window action menu for Linux.
 One standalone Rust binary, rendered with [Slint](https://slint.dev) — no
 shell framework, no QML runtime, no Python. Runs on Hyprland, sway and other
-wlroots compositors, KDE (Wayland & X11), GNOME, and every X11 desktop;
-Windows and macOS ports are on the roadmap.
+wlroots compositors, KDE (Wayland & X11), GNOME, and every X11 desktop, plus
+Windows 10/11; macOS gets an app-launcher build (window switching is TBD).
 
 <p>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT license"></a>
@@ -112,6 +112,7 @@ per session:
 | Any X11 WM (EWMH) — KDE-X11, XFCE, Cinnamon, MATE, i3, GNOME-X11… | ✓ | ✓ | — | — |
 | GNOME Wayland | — | — | — | — |
 | **Windows** (Win32 — `EnumWindows`) | ✓ | ✓ (fullscreen = maximise) | — | — |
+| **macOS** — apps ring only (no window adapter yet) | — | — | — | — |
 
 Global shortcuts pick a provider the same way: **hyprctl** binds on Hyprland,
 the **XDG global-shortcuts portal** on GNOME / KDE Wayland (your desktop may
@@ -146,6 +147,24 @@ behind the same traits:
 
 Build with a normal `cargo build --release` on Windows (MSVC), or cross-compile
 from Linux with the `x86_64-pc-windows-gnu` target and `mingw-w64`.
+
+### macOS
+
+The same binary builds for macOS (Apple Silicon & Intel) — a native Cocoa/winit
+overlay with the system tray:
+
+- **Apps ring** — scanned from `/Applications`, `/System/Applications`, and
+  `~/Applications`; each `.app` launches via `open`. Icons fall back to
+  monogram tiles for now (`.icns` decoding is a future addition).
+- **Windows / actions rings** — degrade: macOS has no wlr/Win32-style window
+  protocol, so listing/switching needs a CGWindowList/AX adapter (the
+  `Compositor` trait already exposes the seam). The apps ring works fully.
+- **Global hotkeys** — none in-process yet; bind a launcher (skhd, Karabiner,
+  Raycast…) to `radiall --apps` — the unix-socket CLI drives the daemon.
+- **State** lives in `~/Library/Application Support/radiall/`.
+
+Verified to compile for `aarch64-apple-darwin`; a runnable binary needs a Mac
+(or the Apple SDK via osxcross) to link.
 
 ### Resource footprint
 
